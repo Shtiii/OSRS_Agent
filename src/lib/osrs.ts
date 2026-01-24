@@ -247,8 +247,12 @@ export function formatStatsSummary(player: WOMPlayerDetails): string {
     'slayer', 'farming', 'herblore', 'construction', 'hunter'
   ];
 
+  // FIX: Directly grab the 'overall' level from the API logic.
+  // No math needed, preventing double-counting bugs.
+  const totalLevel = skills.overall?.level || 0;
+
   const lines: string[] = [
-    `Total Level: ${Object.values(skills).reduce((sum, s) => sum + (s.level || 0), 0)}`,
+    `Total Level: ${totalLevel}`,
     `Combat Level: ${player.combatLevel}`,
     `Account Type: ${player.type}`,
     '',
@@ -256,6 +260,7 @@ export function formatStatsSummary(player: WOMPlayerDetails): string {
   ];
 
   for (const skillName of importantSkills) {
+    // @ts-ignore - access dynamic property
     const skill = skills[skillName];
     if (skill) {
       lines.push(`- ${skillName.charAt(0).toUpperCase() + skillName.slice(1)}: ${skill.level}`);

@@ -78,12 +78,14 @@ export default function Sidebar({
     }
   };
 
+  // FIX: This now looks directly at skills.overall instead of "computed"
   const getTotalLevel = () => {
-    if (!stats?.latestSnapshot?.data?.computed) return 0;
-    // Use the API's computed overall value which is the total level
-    const overallData = stats.latestSnapshot.data.computed.overall;
-    if (overallData && overallData.value) {
-      return overallData.value;
+    if (!stats?.latestSnapshot?.data?.skills) return 0;
+    
+    // The API puts the total level here:
+    const overall = stats.latestSnapshot.data.skills.overall;
+    if (overall && overall.level) {
+        return overall.level;
     }
     return 0;
   };
