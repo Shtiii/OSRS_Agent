@@ -1,8 +1,23 @@
 @import "tailwindcss";
 
 :root {
-  --background: #030712;
-  --foreground: #f9fafb;
+  /* OSRS Theme Colors */
+  --osrs-bg: #1e1e1e;
+  --osrs-chat: #131313;
+  --osrs-panel: #5b4a3e;
+  --osrs-panel-dark: #4a3d32;
+  --osrs-border: #383023;
+  --osrs-border-light: #6d5a4a;
+  --osrs-yellow: #ffff00;
+  --osrs-orange: #ff981f;
+  --osrs-red: #800000;
+  --osrs-cyan: #00ffff;
+  --osrs-green: #00ff00;
+  --osrs-white: #ffffff;
+  
+  /* Background and foreground */
+  --background: var(--osrs-bg);
+  --foreground: var(--osrs-white);
 }
 
 @theme inline {
@@ -10,6 +25,20 @@
   --color-foreground: var(--foreground);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
+  
+  /* OSRS Theme Colors */
+  --color-osrs-bg: var(--osrs-bg);
+  --color-osrs-chat: var(--osrs-chat);
+  --color-osrs-panel: var(--osrs-panel);
+  --color-osrs-panel-dark: var(--osrs-panel-dark);
+  --color-osrs-border: var(--osrs-border);
+  --color-osrs-border-light: var(--osrs-border-light);
+  --color-osrs-yellow: var(--osrs-yellow);
+  --color-osrs-orange: var(--osrs-orange);
+  --color-osrs-red: var(--osrs-red);
+  --color-osrs-cyan: var(--osrs-cyan);
+  --color-osrs-green: var(--osrs-green);
+  --color-osrs-white: var(--osrs-white);
 }
 
 /* Always dark mode for OSRS theme */
@@ -18,34 +47,118 @@ html {
 }
 
 body {
-  background: var(--background);
+  background: var(--osrs-bg);
   color: var(--foreground);
   font-family: var(--font-geist-sans), Arial, Helvetica, sans-serif;
   overflow: hidden;
 }
 
-/* Custom scrollbar for dark theme */
+/* OSRS Pixel Font for headings */
+.osrs-heading {
+  font-family: 'Press Start 2P', monospace;
+  text-shadow: 2px 2px 0 #000;
+}
+
+/* OSRS Button Style */
+.osrs-button {
+  background: linear-gradient(180deg, #7a6a5a 0%, #5b4a3e 50%, #4a3d32 100%);
+  border: 2px solid var(--osrs-border);
+  border-top-color: var(--osrs-border-light);
+  border-left-color: var(--osrs-border-light);
+  color: var(--osrs-orange);
+  text-shadow: 1px 1px 0 #000;
+  font-weight: bold;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+  transition: all 0.1s ease;
+}
+
+.osrs-button:hover {
+  background: linear-gradient(180deg, #8a7a6a 0%, #6b5a4e 50%, #5a4d42 100%);
+}
+
+.osrs-button:active {
+  background: linear-gradient(180deg, #4a3d32 0%, #5b4a3e 50%, #7a6a5a 100%);
+  border-top-color: var(--osrs-border);
+  border-left-color: var(--osrs-border);
+  border-bottom-color: var(--osrs-border-light);
+  border-right-color: var(--osrs-border-light);
+}
+
+.osrs-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* OSRS Panel Style */
+.osrs-panel {
+  background: linear-gradient(180deg, #6b5a4e 0%, #5b4a3e 20%, #4a3d32 100%);
+  border: 2px solid var(--osrs-border);
+  border-top-color: var(--osrs-border-light);
+  border-left-color: var(--osrs-border-light);
+}
+
+/* OSRS Input Style */
+.osrs-input {
+  background: #1a1a1a;
+  border: 2px solid var(--osrs-border);
+  border-top-color: #2a2a2a;
+  border-left-color: #2a2a2a;
+  color: var(--osrs-yellow);
+  padding: 0.5rem;
+}
+
+.osrs-input:focus {
+  outline: none;
+  border-color: var(--osrs-orange);
+}
+
+.osrs-input::placeholder {
+  color: #666;
+}
+
+/* Custom scrollbar - OSRS themed */
 ::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
+  width: 10px;
+  height: 10px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #1f2937;
-  border-radius: 4px;
+  background: #2a2a2a;
+  border: 1px solid var(--osrs-border);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #4b5563;
-  border-radius: 4px;
+  background: linear-gradient(180deg, #6b5a4e 0%, #5b4a3e 50%, #4a3d32 100%);
+  border: 1px solid var(--osrs-border-light);
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #6b7280;
+  background: linear-gradient(180deg, #7b6a5e 0%, #6b5a4e 50%, #5a4d42 100%);
 }
 
-/* Selection color */
+/* Selection color - OSRS orange */
 ::selection {
-  background: rgba(217, 119, 6, 0.3);
-  color: #f9fafb;
+  background: rgba(255, 152, 31, 0.4);
+  color: var(--osrs-yellow);
+}
+
+/* OSRS Stats text */
+.osrs-stats {
+  color: var(--osrs-yellow);
+  font-weight: bold;
+  text-shadow: 1px 1px 0 #000;
+}
+
+/* OSRS Chat message styles */
+.osrs-chat-user {
+  color: var(--osrs-cyan);
+}
+
+.osrs-chat-ai {
+  color: var(--osrs-yellow);
+}
+
+.osrs-chat-system {
+  color: var(--osrs-orange);
 }

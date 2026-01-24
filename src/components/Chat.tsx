@@ -4,11 +4,8 @@ import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Send,
   Bot,
-  User,
   Loader2,
   Sparkles,
-  Search,
-  BookOpen,
   AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -20,12 +17,11 @@ interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
-  dbId?: string; // Database ID for updating
+  dbId?: string;
 }
 
 interface ChatProps {
   userContext: UserContext;
-  // New props for persistence
   chatId: string | null;
   onCreateChat: (firstMessage: string) => Promise<string | null>;
   onUpdateChatTitle: (chatId: string, title: string) => Promise<void>;
@@ -47,7 +43,6 @@ export default function Chat({
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pendingAssistantMessageRef = useRef<string | null>(null);
 
-  // Supabase hooks for message persistence
   const { 
     messages: dbMessages, 
     isLoading: isDbLoading, 
@@ -57,7 +52,6 @@ export default function Chat({
     fetchMessages 
   } = useMessages(chatId);
 
-  // Scroll to bottom when messages change
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -66,7 +60,6 @@ export default function Chat({
     scrollToBottom();
   }, [messages]);
 
-  // Load messages from database when chatId changes
   useEffect(() => {
     if (chatId && dbMessages.length > 0) {
       const loadedMessages: Message[] = dbMessages.map((msg) => ({
@@ -78,13 +71,11 @@ export default function Chat({
       setMessages(loadedMessages);
       setIsFirstMessage(false);
     } else if (!chatId) {
-      // New chat - clear messages
       setMessages([]);
       setIsFirstMessage(true);
     }
   }, [chatId, dbMessages]);
 
-  // Save assistant message when streaming completes (accepts explicit chatId)
   const saveAssistantMessageToDb = useCallback(async (targetChatId: string, messageId: string, content: string) => {
     if (targetChatId && content) {
       const dbId = await saveMessageToChat(targetChatId, 'assistant', content);
@@ -114,14 +105,12 @@ export default function Chat({
     setIsLoading(true);
     setError(null);
 
-    // If this is the first message, create a new chat
     let currentChatId = chatId;
     if (isFirstMessage && !chatId) {
       currentChatId = await onCreateChat(userMessageContent);
       setIsFirstMessage(false);
     }
 
-    // Save user message to database (use saveMessageToChat with explicit chatId for new chats)
     if (currentChatId) {
       const dbId = await saveMessageToChat(currentChatId, 'user', userMessageContent);
       if (dbId) {
@@ -134,7 +123,6 @@ export default function Chat({
     }
 
     try {
-      // Only include messages with non-empty content and valid roles
       const messagesToSend = [...messages, userMessage]
         .filter((m) => m.content && m.content.trim().length > 0)
         .map((m) => ({
@@ -201,7 +189,6 @@ export default function Chat({
         }
       }
 
-      // Save assistant message to database after streaming completes
       if (currentChatId && fullContent) {
         await saveAssistantMessageToDb(currentChatId, assistantMessageId, fullContent);
       }
@@ -226,36 +213,40 @@ export default function Chat({
     setInput(prompt);
   };
 
+  const displayName = userContext.stats?.displayName || userContext.username || 'Player';
+
   return (
-    <div className="flex-1 flex flex-col bg-gray-950 h-full">
-      {/* Chat Header */}
-      <div className="px-6 py-4 border-b border-gray-800 bg-gray-900/50">
+    <div className="flex-1 flex flex-col h-full" style={{ backgroundColor: 'var(--osrs-chat)' }}>
+      {/* Chat Header - OSRS Style */}
+      <div className="px-4 py-3 border-b-2 border-[var(--osrs-border)] osrs-panel">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-amber-600/20 flex items-center justify-center">
-            <Bot className="w-6 h-6 text-amber-500" />
+          <div className="w-10 h-10 rounded border-2 border-[var(--osrs-border-light)] bg-[var(--osrs-panel-dark)] flex items-center justify-center">
+            <Bot className="w-6 h-6 text-[var(--osrs-orange)]" />
           </div>
           <div>
-            <h2 className="font-semibold text-white">OSRS AI Assistant</h2>
-            <p className="text-sm text-gray-400">
+            <h2 className="font-semibold text-[var(--osrs-orange)]" style={{ fontFamily: 'var(--font-press-start)', fontSize: '12px', textShadow: '2px 2px 0 #000' }}>
+              Wise Old AI
+            </h2>
+            <p className="text-sm text-gray-300">
               {userContext.username
-                ? `Helping ${userContext.stats?.displayName || userContext.username}`
-                : 'Enter your username to get personalized advice'}
+                ? `Advising ${displayName}`
+                : 'Enter username for advice'}
               {profile?.memory_notes && (
-                <span className="text-purple-400"> • Memory active</span>
+                <span className="text-purple-400"> • Memory</span>
               )}
             </p>
           </div>
           {userContext.stats && (
             <div className="ml-auto flex items-center gap-2 text-sm">
-              <span className="px-2 py-1 rounded bg-gray-800 text-gray-300">
-                Combat {userContext.stats.combatLevel}
+              <span className="px-2 py-1 rounded bg-[var(--osrs-panel-dark)] border border-[var(--osrs-border)] text-[var(--osrs-yellow)]" style={{ textShadow: '1px 1px 0 #000' }}>
+                Cmb {userContext.stats.combatLevel}
               </span>
               <span className={cn(
-                'px-2 py-1 rounded capitalize',
+                'px-2 py-1 rounded capitalize border border-[var(--osrs-border)]',
                 userContext.stats.type === 'ironman' && 'bg-gray-700 text-gray-300',
                 userContext.stats.type === 'hardcore' && 'bg-red-900/50 text-red-400',
                 userContext.stats.type === 'ultimate' && 'bg-purple-900/50 text-purple-400',
-                userContext.stats.type === 'regular' && 'bg-green-900/50 text-green-400',
+                userContext.stats.type === 'regular' && 'bg-[var(--osrs-panel-dark)] text-[var(--osrs-green)]',
               )}>
                 {userContext.stats.type}
               </span>
@@ -264,23 +255,23 @@ export default function Chat({
         </div>
       </div>
 
-      {/* Messages Area */}
-      <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
+      {/* Messages Area - OSRS Chatbox Style */}
+      <div className="flex-1 overflow-y-auto px-4 py-4 space-y-2">
         {isDbLoading ? (
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+            <Loader2 className="w-8 h-8 animate-spin text-[var(--osrs-orange)]" />
           </div>
         ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
-            <div className="w-16 h-16 rounded-full bg-amber-600/20 flex items-center justify-center mb-4">
-              <Sparkles className="w-8 h-8 text-amber-500" />
+            <div className="w-20 h-20 rounded-lg osrs-panel flex items-center justify-center mb-4">
+              <Sparkles className="w-10 h-10 text-[var(--osrs-yellow)]" />
             </div>
-            <h3 className="text-xl font-semibold text-white mb-2">
-              Welcome to OSRS Helper!
+            <h3 className="text-xl font-semibold text-[var(--osrs-orange)] mb-2" style={{ fontFamily: 'var(--font-press-start)', fontSize: '14px', textShadow: '2px 2px 0 #000' }}>
+              Welcome, Adventurer!
             </h3>
-            <p className="text-gray-400 max-w-md mb-6">
-              I can help you with boss strategies, gear setups, quest requirements,
-              and money making methods. Ask me anything about OSRS!
+            <p className="text-gray-300 max-w-md mb-6">
+              I can help with boss strategies, gear setups, quest requirements,
+              and money making methods.
             </p>
 
             <div className="grid grid-cols-2 gap-3 max-w-lg">
@@ -288,7 +279,7 @@ export default function Chat({
                 <button
                   key={index}
                   onClick={() => handleSuggestionClick(prompt)}
-                  className="p-3 text-left text-sm bg-gray-800 hover:bg-gray-700 border border-gray-700 rounded-lg text-gray-300 transition-colors"
+                  className="osrs-button p-3 text-left text-sm"
                 >
                   {prompt}
                 </button>
@@ -296,17 +287,16 @@ export default function Chat({
             </div>
 
             {!userContext.username && (
-              <div className="mt-6 p-4 bg-amber-900/20 border border-amber-800/50 rounded-lg max-w-md">
-                <p className="text-amber-400 text-sm">
-                  💡 Enter your RuneScape username in the sidebar to get
-                  personalized advice based on your stats!
+              <div className="mt-6 p-4 bg-[var(--osrs-panel-dark)] border-2 border-[var(--osrs-orange)] rounded max-w-md">
+                <p className="text-[var(--osrs-yellow)] text-sm" style={{ textShadow: '1px 1px 0 #000' }}>
+                  💡 Enter your RuneScape username in the sidebar for personalized advice!
                 </p>
               </div>
             )}
 
             {profile?.memory_notes && (
-              <div className="mt-4 p-4 bg-purple-900/20 border border-purple-800/50 rounded-lg max-w-md">
-                <p className="text-purple-400 text-sm">
+              <div className="mt-4 p-4 bg-purple-900/20 border-2 border-purple-600 rounded max-w-md">
+                <p className="text-purple-300 text-sm">
                   🧠 I remember: {profile.memory_notes}
                 </p>
               </div>
@@ -315,44 +305,31 @@ export default function Chat({
         ) : (
           <>
             {messages.map((message) => (
-              <div
-                key={message.id}
-                className={cn(
-                  'flex gap-3',
-                  message.role === 'user' ? 'justify-end' : 'justify-start'
-                )}
-              >
-                {message.role === 'assistant' && (
-                  <div className="w-8 h-8 rounded-lg bg-amber-600/20 flex-shrink-0 flex items-center justify-center">
-                    <Bot className="w-5 h-5 text-amber-500" />
+              <div key={message.id} className="py-1">
+                {message.role === 'user' ? (
+                  // User message - OSRS player chat style (cyan)
+                  <div className="flex items-start gap-1">
+                    <span className="text-[var(--osrs-cyan)] font-bold" style={{ textShadow: '1px 1px 0 #000' }}>
+                      {displayName}:
+                    </span>
+                    <span className="text-[var(--osrs-white)]" style={{ textShadow: '1px 1px 0 #000' }}>
+                      {message.content}
+                    </span>
                   </div>
-                )}
-                <div
-                  className={cn(
-                    'max-w-[70%] rounded-lg px-4 py-3',
-                    message.role === 'user'
-                      ? 'bg-amber-600 text-white'
-                      : 'bg-gray-800 text-gray-100'
-                  )}
-                >
-                  <MessageContent content={message.content} />
-                </div>
-                {message.role === 'user' && (
-                  <div className="w-8 h-8 rounded-lg bg-gray-700 flex-shrink-0 flex items-center justify-center">
-                    <User className="w-5 h-5 text-gray-300" />
+                ) : (
+                  // AI message - OSRS system/NPC style (yellow)
+                  <div className="pl-2 border-l-2 border-[var(--osrs-orange)]/30">
+                    <MessageContent content={message.content} />
                   </div>
                 )}
               </div>
             ))}
 
             {isLoading && messages[messages.length - 1]?.role !== 'assistant' && (
-              <div className="flex gap-3">
-                <div className="w-8 h-8 rounded-lg bg-amber-600/20 flex-shrink-0 flex items-center justify-center">
-                  <Bot className="w-5 h-5 text-amber-500" />
-                </div>
-                <div className="bg-gray-800 rounded-lg px-4 py-3 flex items-center gap-2">
-                  <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-                  <span className="text-gray-400">Thinking...</span>
+              <div className="py-1 pl-2 border-l-2 border-[var(--osrs-orange)]/30">
+                <div className="flex items-center gap-2">
+                  <Loader2 className="w-4 h-4 animate-spin text-[var(--osrs-orange)]" />
+                  <span className="text-[var(--osrs-orange)]" style={{ textShadow: '1px 1px 0 #000' }}>Thinking...</span>
                 </div>
               </div>
             )}
@@ -362,39 +339,30 @@ export default function Chat({
         )}
 
         {error && (
-          <div className="flex items-center gap-2 p-4 bg-red-900/20 border border-red-800/50 rounded-lg text-red-400">
+          <div className="flex items-center gap-2 p-4 bg-[var(--osrs-red)]/20 border-2 border-[var(--osrs-red)] rounded text-red-300">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
             <p>Something went wrong. Please try again.</p>
           </div>
         )}
       </div>
 
-      {/* Input Area */}
-      <div className="px-6 py-4 border-t border-gray-800 bg-gray-900/50">
-        <form onSubmit={handleSubmit} className="flex gap-3">
+      {/* Input Area - OSRS Chat Input Style */}
+      <div className="px-4 py-3 border-t-2 border-[var(--osrs-border)]" style={{ backgroundColor: '#1a1a1a' }}>
+        <form onSubmit={handleSubmit} className="flex gap-2">
           <div className="flex-1 relative">
             <input
               type="text"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask about bosses, gear, quests, or strategies..."
-              className="w-full bg-gray-800 border border-gray-700 rounded-lg pl-4 pr-12 py-3 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-amber-500 focus:border-transparent"
+              placeholder="Type your message here..."
+              className="osrs-input w-full rounded py-2.5 px-3"
               disabled={isLoading}
             />
-            <div className="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-2 text-gray-500">
-              <Search className="w-4 h-4" />
-              <BookOpen className="w-4 h-4" />
-            </div>
           </div>
           <button
             type="submit"
             disabled={isLoading || !input.trim()}
-            className={cn(
-              'px-4 py-3 rounded-lg font-medium transition-colors flex items-center gap-2',
-              isLoading || !input.trim()
-                ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
-                : 'bg-amber-600 text-white hover:bg-amber-500'
-            )}
+            className="osrs-button px-4 py-2.5 rounded flex items-center gap-2"
           >
             {isLoading ? (
               <Loader2 className="w-5 h-5 animate-spin" />
@@ -404,48 +372,47 @@ export default function Chat({
           </button>
         </form>
         <p className="text-xs text-gray-500 mt-2 text-center">
-          AI responses may not always be accurate. Verify important information on the OSRS Wiki.
+          AI responses may not always be accurate. Verify on OSRS Wiki.
         </p>
       </div>
     </div>
   );
 }
 
-// Component to render message content with markdown-like formatting
+// Message content with OSRS-styled markdown rendering
 function MessageContent({ content }: { content: string }) {
   if (!content) {
     return (
       <div className="flex items-center gap-2">
-        <Loader2 className="w-4 h-4 animate-spin text-amber-500" />
-        <span className="text-gray-400">Generating response...</span>
+        <Loader2 className="w-4 h-4 animate-spin text-[var(--osrs-orange)]" />
+        <span className="text-gray-400">Generating...</span>
       </div>
     );
   }
 
-  // Simple markdown parsing for headers, bold, and lists
   const lines = content.split('\n');
   
   return (
-    <div className="prose prose-invert prose-sm max-w-none">
+    <div className="space-y-1">
       {lines.map((line, index) => {
-        // Headers
+        // Headers - OSRS Orange/Yellow
         if (line.startsWith('### ')) {
           return (
-            <h4 key={index} className="text-amber-400 font-semibold mt-3 mb-1 text-sm">
+            <h4 key={index} className="text-[var(--osrs-orange)] font-semibold mt-3 mb-1 text-sm" style={{ textShadow: '1px 1px 0 #000' }}>
               {line.slice(4)}
             </h4>
           );
         }
         if (line.startsWith('## ')) {
           return (
-            <h3 key={index} className="text-amber-400 font-semibold mt-4 mb-2 text-base">
+            <h3 key={index} className="text-[var(--osrs-orange)] font-semibold mt-4 mb-2 text-base" style={{ textShadow: '1px 1px 0 #000' }}>
               {line.slice(3)}
             </h3>
           );
         }
         if (line.startsWith('# ')) {
           return (
-            <h2 key={index} className="text-amber-400 font-bold mt-4 mb-2 text-lg">
+            <h2 key={index} className="text-[var(--osrs-yellow)] font-bold mt-4 mb-2 text-lg" style={{ fontFamily: 'var(--font-press-start)', fontSize: '12px', textShadow: '2px 2px 0 #000' }}>
               {line.slice(2)}
             </h2>
           );
@@ -454,8 +421,8 @@ function MessageContent({ content }: { content: string }) {
         // Bullet points
         if (line.startsWith('- ') || line.startsWith('* ')) {
           return (
-            <div key={index} className="flex gap-2 ml-2">
-              <span className="text-amber-500">•</span>
+            <div key={index} className="flex gap-2 ml-2 text-[var(--osrs-yellow)]" style={{ textShadow: '1px 1px 0 #000' }}>
+              <span className="text-[var(--osrs-orange)]">►</span>
               <span>{formatInlineText(line.slice(2))}</span>
             </div>
           );
@@ -465,8 +432,8 @@ function MessageContent({ content }: { content: string }) {
         const numberedMatch = line.match(/^(\d+)\.\s/);
         if (numberedMatch) {
           return (
-            <div key={index} className="flex gap-2 ml-2">
-              <span className="text-amber-500">{numberedMatch[1]}.</span>
+            <div key={index} className="flex gap-2 ml-2 text-[var(--osrs-yellow)]" style={{ textShadow: '1px 1px 0 #000' }}>
+              <span className="text-[var(--osrs-orange)]">{numberedMatch[1]}.</span>
               <span>{formatInlineText(line.slice(numberedMatch[0].length))}</span>
             </div>
           );
@@ -477,9 +444,9 @@ function MessageContent({ content }: { content: string }) {
           return <div key={index} className="h-2" />;
         }
         
-        // Regular paragraphs
+        // Regular text - Yellow like NPC dialogue
         return (
-          <p key={index} className="my-1">
+          <p key={index} className="text-[var(--osrs-yellow)]" style={{ textShadow: '1px 1px 0 #000' }}>
             {formatInlineText(line)}
           </p>
         );
@@ -488,26 +455,24 @@ function MessageContent({ content }: { content: string }) {
   );
 }
 
-// Format inline text (bold, italic, code, images)
+// Format inline text with images and styling
 function formatInlineText(text: string): React.ReactNode {
-  // Check for markdown images first: ![alt](url)
+  // Check for markdown images: ![alt](url)
   const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
   const parts: React.ReactNode[] = [];
   let lastIndex = 0;
   let match;
 
   while ((match = imageRegex.exec(text)) !== null) {
-    // Add text before the image
     if (match.index > lastIndex) {
       parts.push(formatTextOnly(text.slice(lastIndex, match.index)));
     }
     
-    // Add the image
     const altText = match[1];
     const imageUrl = match[2];
     parts.push(
       <div key={`img-${match.index}`} className="my-3 inline-block">
-        <div className="border-2 border-amber-600/50 bg-black/40 rounded-lg p-2 inline-block">
+        <div className="border-2 border-[var(--osrs-border-light)] bg-[var(--osrs-panel-dark)] rounded p-2 inline-block">
           <img
             src={imageUrl}
             alt={altText}
@@ -518,7 +483,7 @@ function formatInlineText(text: string): React.ReactNode {
             }}
           />
           {altText && (
-            <p className="text-xs text-gray-400 text-center mt-1">{altText}</p>
+            <p className="text-xs text-[var(--osrs-orange)] text-center mt-1">{altText}</p>
           )}
         </div>
       </div>
@@ -527,7 +492,6 @@ function formatInlineText(text: string): React.ReactNode {
     lastIndex = match.index + match[0].length;
   }
 
-  // Add remaining text after last image
   if (lastIndex < text.length) {
     parts.push(formatTextOnly(text.slice(lastIndex)));
   }
@@ -535,15 +499,14 @@ function formatInlineText(text: string): React.ReactNode {
   return parts.length > 0 ? parts : formatTextOnly(text);
 }
 
-// Format text without images (bold, code)
+// Format text without images
 function formatTextOnly(text: string): React.ReactNode {
-  // Simple bold and code formatting
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   
   return parts.map((part, index) => {
     if (part.startsWith('**') && part.endsWith('**')) {
       return (
-        <strong key={index} className="text-white font-semibold">
+        <strong key={index} className="text-[var(--osrs-white)] font-semibold">
           {part.slice(2, -2)}
         </strong>
       );
@@ -552,7 +515,7 @@ function formatTextOnly(text: string): React.ReactNode {
       return (
         <code
           key={index}
-          className="bg-gray-700 px-1 py-0.5 rounded text-amber-300 text-xs"
+          className="bg-[var(--osrs-panel-dark)] px-1 py-0.5 rounded text-[var(--osrs-green)] text-xs border border-[var(--osrs-border)]"
         >
           {part.slice(1, -1)}
         </code>
