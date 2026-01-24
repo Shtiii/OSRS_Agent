@@ -444,11 +444,11 @@ function MessageContent({ content }: { content: string }) {
           return <div key={index} className="h-2" />;
         }
         
-        // Regular text - Yellow like NPC dialogue
+        // Regular text - Yellow like NPC dialogue (use div to allow block children)
         return (
-          <p key={index} className="text-[var(--osrs-yellow)]" style={{ textShadow: '1px 1px 0 #000' }}>
+          <div key={index} className="text-[var(--osrs-yellow)]" style={{ textShadow: '1px 1px 0 #000' }}>
             {formatInlineText(line)}
-          </p>
+          </div>
         );
       })}
     </div>
@@ -483,7 +483,7 @@ function formatInlineText(text: string): React.ReactNode {
             }}
           />
           {altText && (
-            <p className="text-xs text-[var(--osrs-orange)] text-center mt-1">{altText}</p>
+            <span className="block text-xs text-[var(--osrs-orange)] text-center mt-1">{altText}</span>
           )}
         </div>
       </div>
