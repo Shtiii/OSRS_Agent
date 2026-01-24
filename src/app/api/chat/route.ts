@@ -1,5 +1,6 @@
 import { searchWiki, getWikiPage, getWikiPageFull, getItemPrice, formatPriceSummary } from '@/lib/osrs';
 import { searchWeb, formatSearchResults } from '@/lib/tavily';
+import { retrieveContext, formatContextForPrompt, isRAGConfigured } from '@/lib/rag';
 import type { UserContext, CollectionLogItem } from '@/lib/types';
 
 // Allow streaming responses up to 60 seconds
@@ -334,7 +335,35 @@ export async function POST(req: Request) {
   try {
     const { messages, userContext, profile } = await req.json();
 
-    const systemPrompt = buildSystemPrompt(userContext, profile);
+    // Get the latest user message for RAG context retrieval
+    const latestUserMessage = messages
+      .slice()
+      .reverse()
+      .find((m: { role: string }) => m.role === 'user')?.content || '';
+
+    // Retrieve relevant context from vector store (if RAG is configured)
+    let ragContext = '';
+    if (isRAGConfigured() && latestUserMessage) {
+      try {
+        const relevantDocs = await retrieveContext(latestUserMessage, {
+          matchThreshold: 0.65,
+          matchCount: 3,
+        });
+        if (relevantDocs.length > 0) {
+          ragContext = formatContextForPrompt(relevantDocs);
+          console.log(`RAG: Retrieved ${relevantDocs.length} relevant documents`);
+        }
+      } catch (ragError) {
+        console.error('RAG retrieval error:', ragError);
+        // Continue without RAG context - graceful degradation
+      }
+    }
+
+    // Build system prompt with optional RAG context
+    const baseSystemPrompt = buildSystemPrompt(userContext, profile);
+    const systemPrompt = ragContext
+      ? `${baseSystemPrompt}\n\n${ragContext}`
+      : baseSystemPrompt;
 
     // Ensure messages are in the correct format for OpenRouter
     const formattedMessages = messages.map((msg: { role: string; content: string }) => ({
