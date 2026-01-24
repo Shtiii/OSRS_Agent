@@ -2,17 +2,17 @@
 
 :root {
   /* OSRS Theme Colors */
-  --osrs-bg: #1e1e1e;
-  --osrs-chat: #131313;
+  --osrs-bg: #000000;
+  --osrs-chat: #0e0d0d;
   --osrs-panel: #3a4433;
-  --osrs-panel-dark: #181510;
-  --osrs-border: #3a4433;
-  --osrs-border-light: #3a4433;
+  --osrs-panel-dark: #161A23;
+  --osrs-border: #161A23;
+  --osrs-border-light: #161A23;
   --osrs-yellow: #EDDA97;
-  --osrs-orange: #a36927;
+  --osrs-orange: #e7e7e9;
   --osrs-red: #800000;
   --osrs-cyan: #00ffff;
-  --osrs-green: #6C6C00;
+  --osrs-green: #272717;
   --osrs-white: #ffffff;
   
   /* Background and foreground */
@@ -61,7 +61,7 @@ body {
 
 /* OSRS Button Style */
 .osrs-button {
-  background: linear-gradient(180deg, #7a6a5a 0%, #5b4a3e 50%, #4a3d32 100%);
+  background: linear-gradient(180deg, #000000 0%, #5b4a3e 50%, #4a3d32 100%);
   border: 2px solid var(--osrs-border);
   border-top-color: var(--osrs-border-light);
   border-left-color: var(--osrs-border-light);
@@ -74,11 +74,11 @@ body {
 }
 
 .osrs-button:hover {
-  background: linear-gradient(180deg, #8a7a6a 0%, #6b5a4e 50%, #5a4d42 100%);
+  background: linear-gradient(180deg, #46413d 0%, #6b5a4e 50%, #5a4d42 100%);
 }
 
 .osrs-button:active {
-  background: linear-gradient(180deg, #4a3d32 0%, #5b4a3e 50%, #7a6a5a 100%);
+  background: linear-gradient(180deg, #44413f 0%, #101013 50%, #7a6a5a 100%);
   border-top-color: var(--osrs-border);
   border-left-color: var(--osrs-border);
   border-bottom-color: var(--osrs-border-light);
@@ -92,7 +92,7 @@ body {
 
 /* OSRS Panel Style */
 .osrs-panel {
-  background: linear-gradient(180deg, #6b5a4e 0%, #5b4a3e 20%, #4a3d32 100%);
+  background: linear-gradient(180deg, #000000 0%, #16171b 20%, #16171b 100%);
   border: 2px solid var(--osrs-border);
   border-top-color: var(--osrs-border-light);
   border-left-color: var(--osrs-border-light);
@@ -100,10 +100,10 @@ body {
 
 /* OSRS Input Style */
 .osrs-input {
-  background: #1a1a1a;
+  background: #1A1710;
   border: 2px solid var(--osrs-border);
-  border-top-color: #2a2a2a;
-  border-left-color: #2a2a2a;
+  border-top-color: #1A1710;
+  border-left-color: #1A1710;
   color: var(--osrs-yellow);
   padding: 0.5rem;
 }
