@@ -1,6 +1,7 @@
 import { searchWiki, getWikiPage, getWikiPageFull, getItemPrice, formatPriceSummary } from '@/lib/osrs';
 import { searchWeb, formatSearchResults } from '@/lib/tavily';
-import { retrieveContext, formatContextForPrompt, isRAGConfigured } from '@/lib/rag';
+import { retrieveContext, formatContextForPrompt, isRAGConfigured, addDocument } from '@/lib/rag';
+import { getSupabaseClient } from '@/lib/supabase';
 import type { UserContext, CollectionLogItem } from '@/lib/types';
 
 // Allow streaming responses up to 60 seconds
@@ -15,7 +16,79 @@ interface ProfileData {
   playStyle: string | null;
 }
 
-// Helper function to get key skills from stats
+// ============================================
+// AUTO-CACHING LAYER
+// ============================================
+
+interface CachedWikiPage {
+  title: string;
+  content: string;
+  url: string;
+  imageUrl?: string | null;
+  cachedAt: string;
+}
+
+/**
+ * Check if a Wiki page is already cached in Supabase
+ */
+async function getCachedWikiPage(title: string): Promise<CachedWikiPage | null> {
+  const supabase = getSupabaseClient();
+  if (!supabase) return null;
+
+  try {
+    const normalizedTitle = title.toLowerCase().trim();
+    const { data, error } = await (supabase as any)
+      .from('documents')
+      .select('content, metadata')
+      .eq('metadata->>type', 'wiki_page')
+      .ilike('metadata->>title', normalizedTitle)
+      .limit(1)
+      .single();
+
+    if (error || !data) return null;
+
+    return {
+      title: data.metadata?.title || title,
+      content: data.content,
+      url: data.metadata?.url || '',
+      imageUrl: data.metadata?.imageUrl || null,
+      cachedAt: data.metadata?.cachedAt || '',
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Cache a Wiki page to Supabase documents table
+ */
+async function cacheWikiPage(
+  title: string,
+  content: string,
+  url: string,
+  imageUrl?: string | null
+): Promise<void> {
+  try {
+    const metadata = {
+      type: 'wiki_page',
+      title: title.toLowerCase().trim(),
+      displayTitle: title,
+      url,
+      imageUrl,
+      cachedAt: new Date().toISOString(),
+    };
+    
+    await addDocument(content, metadata);
+    console.log(`Cached Wiki page: ${title}`);
+  } catch (error) {
+    console.error('Failed to cache Wiki page:', error);
+  }
+}
+
+// ============================================
+// HELPER FUNCTIONS
+// ============================================
+
 function getKeySkills(stats: UserContext['stats']): string {
   if (!stats?.latestSnapshot?.data?.skills) {
     return 'No detailed stats available';
@@ -39,7 +112,6 @@ function getKeySkills(stats: UserContext['stats']): string {
   return lines.join(', ');
 }
 
-// Helper function to inject specific rules based on account type
 function getGameModeRules(mode: string): string {
   switch (mode) {
     case 'ironman':
@@ -79,7 +151,6 @@ function getGameModeRules(mode: string): string {
   }
 }
 
-// Helper function to format rare items for prompt
 function formatRareItemsForPrompt(items: CollectionLogItem[]): string {
   if (items.length === 0) return 'No rare items logged';
 
@@ -95,7 +166,10 @@ function formatRareItemsForPrompt(items: CollectionLogItem[]): string {
   return lines.join('\n');
 }
 
-// Build dynamic system prompt based on user context and profile memory
+// ============================================
+// SYSTEM PROMPT - "RESEARCHER" MODE
+// ============================================
+
 function buildSystemPrompt(userContext: UserContext | null, profile: ProfileData | null): string {
   const stats = userContext?.stats;
   const username = stats?.displayName || userContext?.username || 'Adventurer';
@@ -148,14 +222,35 @@ ${formatRareItemsForPrompt(userContext.rareItems)}
 `;
   }
 
-  return `You are an expert Old School RuneScape (OSRS) assistant helping **${username}**.
+  return `You are the **Wise Old AI** - an expert Old School RuneScape researcher helping **${username}**.
 
-### STRICT CONSTRAINTS (YOU MUST FOLLOW THESE):
-1. **OSRS ONLY:** You possess knowledge ONLY about Old School RuneScape. If asked about real-world topics, politics, RS3, or other games, politely refuse and steer the conversation back to OSRS.
-2. **NO HALLUCINATION:** If you do not know a drop rate, specific mechanic, quest step, or any factual data, ADMIT IT. Do not invent numbers or mechanics.
-3. **DATA DRIVEN:** Use the provided stats below to tailor your advice. Do NOT suggest high-level content (like ToB or Inferno) if the user has mid-level stats.
+## 🔧 TOOLS & RESEARCH (CRITICAL - READ THIS!)
 
-### USER CONTEXT (CRITICAL - READ THIS):
+You have access to the **ENTIRE OSRS Wiki** via tools. **DO NOT GUESS OR MAKE UP INFORMATION.**
+
+### MANDATORY TOOL USAGE:
+1. **ALWAYS VERIFY** - If the user asks about drop rates, quest requirements, item stats, boss mechanics, or ANY factual data, you MUST use a tool to look it up.
+2. **searchWiki** - Use this when unsure of the exact page name. Example: User asks "Where do I get a Bond?" → Call \`searchWiki("Old School Bond")\`
+3. **getWikiPage** - Use this to read the full content of a specific Wiki page for detailed info.
+4. **getItemPrice** - Use this for Grand Exchange prices (real-time data).
+
+### WHEN TO USE TOOLS:
+✅ "What's the drop rate for X?" → searchWiki + getWikiPage
+✅ "How much is X worth?" → getItemPrice  
+✅ "Requirements for quest X?" → getWikiPage("Quest Name")
+✅ "How do I kill boss X?" → getWikiPage("Boss Name")
+✅ "Where do I get item X?" → searchWiki + getWikiPage
+
+### WHEN NOT TO USE TOOLS:
+❌ Simple greetings ("Hi!", "Thanks!")
+❌ Opinion questions ("What do you think of...")
+❌ Things you can answer from the user's provided stats
+
+### TRANSPARENCY:
+When you use a tool, briefly acknowledge it: "Let me check the Wiki..." or "Looking up prices..."
+
+## 📊 USER CONTEXT
+
 - **Username:** ${username}
 - **Account Type:** ${gameMode.toUpperCase()}
 - **Combat Level:** ${combatLevel}
@@ -166,97 +261,107 @@ ${getGameModeRules(gameMode)}
 ${collectionLogSection}
 ${memorySection}
 
-### HOW TO GIVE GREAT ADVICE:
-1. **Check Requirements:** Before suggesting content, verify the user meets the requirements using their stats above.
-2. **Prioritize Owned Gear:** If suggesting gear, CHECK the collection log above first. Recommend items they already own before suggesting purchases.
-3. **Ask for Clarification:** If you need more info (e.g., "What's your Slayer level?" or "What's your budget?"), ASK the user.
-4. **Be Specific:** Give exact numbers when possible (drop rates, GP/hr, XP/hr).
-5. **Format Clearly:** Use headers, bullet points, and organized sections for complex answers.
+## 📝 RESPONSE STYLE
 
-### VISUAL RESPONSES:
-When discussing specific items, bosses, or gear, include images to make your responses more visual and helpful:
-- Use Markdown image syntax: \`![Item Name](image_url)\`
-- If a tool returns an \`imageUrl\`, include it in your response to show the item/boss
-- Example: When explaining the Abyssal whip, include its image to help the user visualize it
+- **BE CONCISE**: Answer directly in 1-3 sentences for simple questions.
+- **NO FLUFF**: Don't start with "Great question!" - just give the answer.
+- **CITE SOURCES**: When using Wiki data, you can mention "According to the Wiki..."
+- **INCLUDE IMAGES**: If a tool returns an imageUrl, include it using \`![Name](url)\`
+- **ASK IF NEEDED**: If you need clarification, ask the user.
 
-### INTERACTION STYLE:
-- **DEFAULT TO BREVITY:** Answer the user's question directly in 1-2 sentences unless the topic is complex.
-- **NO FLUFF:** Do not start with "Great question!" or "As an OSRS expert...". Just give the answer.
-- **DETAILS ON DEMAND:** Only provide deep breakdowns, gear tables, or step-by-step guides if the user specifically asks for them (e.g., "Guide me", "Gear setup", "Explain in detail").
-- **FORMATTING:** Use bullet points for lists. Use bold text for key items/stats.  
-- **CONTEXT:** If you need more info to give a good answer, ASK THE USER.`;
+## ⚠️ STRICT CONSTRAINTS
+
+1. **OSRS ONLY**: Only discuss Old School RuneScape. Refuse RS3, other games, or off-topic requests.
+2. **NO HALLUCINATION**: If you don't know something and can't find it via tools, say "I couldn't find that information."
+3. **RESPECT GAME MODE**: Always consider the user's account type (Ironman restrictions, etc.)`;
 }
 
-// Define tool functions
+// ============================================
+// TOOL DEFINITIONS
+// ============================================
+
 const tools = {
   searchWiki: {
-    description: 'Search the official OSRS Wiki for factual information.',
+    description: 'Search the OSRS Wiki for a topic. Use this if unsure of the exact page name.',
     execute: async (query: string) => {
+      console.log(`[Tool] searchWiki: "${query}"`);
       const results = await searchWiki(query);
       if (results.length === 0) {
-        return { success: false, message: 'No Wiki pages found.' };
+        return { success: false, message: 'No Wiki pages found for that search.' };
       }
+      
+      // Get summary of top result
       const topResult = results[0];
       const pageContent = await getWikiPage(topResult.title);
+      
       return {
         success: true,
-        results: results.slice(0, 3).map(r => ({
+        searchResults: results.slice(0, 5).map(r => ({
           title: r.title,
-          snippet: r.snippet.replace(/<[^>]*>/g, ''),
+          snippet: r.snippet.replace(/<[^>]*>/g, '').slice(0, 150),
         })),
         topPage: pageContent ? {
           title: pageContent.title,
           url: pageContent.fullurl,
-          content: pageContent.extract.slice(0, 1500),
+          summary: pageContent.extract.slice(0, 800),
           imageUrl: pageContent.imageUrl || null,
         } : null,
       };
     },
   },
-  searchWeb: {
-    description: 'Search the web for OSRS community content.',
-    execute: async (query: string) => {
-      const results = await searchWeb(query, {
-        searchDepth: 'advanced',
-        maxResults: 5,
-        includeAnswer: true,
-      });
-      if (!results || results.results.length === 0) {
-        return { success: false, message: 'No results found.' };
-      }
-      return {
-        success: true,
-        answer: results.answer || null,
-        results: results.results.slice(0, 3).map(r => ({
-          title: r.title,
-          url: r.url,
-          content: r.content.slice(0, 300),
-        })),
-      };
-    },
-  },
+  
   getWikiPage: {
-    description: 'Get detailed content from a specific OSRS Wiki page.',
+    description: 'Read the full content of a specific OSRS Wiki page. Use for detailed info.',
     execute: async (title: string) => {
+      console.log(`[Tool] getWikiPage: "${title}"`);
+      
+      // Check cache first
+      const cached = await getCachedWikiPage(title);
+      if (cached) {
+        console.log(`[Cache HIT] ${title}`);
+        return {
+          success: true,
+          fromCache: true,
+          title: cached.title,
+          url: cached.url,
+          content: cached.content.slice(0, 4000),
+          imageUrl: cached.imageUrl,
+        };
+      }
+      
+      // Fetch from Wiki
+      console.log(`[Cache MISS] Fetching ${title} from Wiki`);
       const content = await getWikiPageFull(title);
       const pageInfo = await getWikiPage(title);
+      
       if (!content) {
-        return { success: false, message: `Wiki page "${title}" not found.` };
+        return { success: false, message: `Wiki page "${title}" not found. Try searchWiki to find the correct name.` };
       }
+      
+      const url = pageInfo?.fullurl || `https://oldschool.runescape.wiki/w/${encodeURIComponent(title)}`;
+      const imageUrl = pageInfo?.imageUrl || null;
+      
+      // Cache for future use (async, don't wait)
+      cacheWikiPage(title, content, url, imageUrl);
+      
       return {
         success: true,
+        fromCache: false,
         title: pageInfo?.title || title,
-        url: pageInfo?.fullurl || `https://oldschool.runescape.wiki/w/${encodeURIComponent(title)}`,
-        content: content.slice(0, 3000),
+        url,
+        content: content.slice(0, 4000),
+        imageUrl,
       };
     },
   },
+  
   getItemPrice: {
     description: 'Get real-time Grand Exchange prices for an OSRS item.',
     execute: async (itemName: string) => {
+      console.log(`[Tool] getItemPrice: "${itemName}"`);
       const priceData = await getItemPrice(itemName);
       if (!priceData) {
-        return { success: false, message: `Could not find price for "${itemName}".` };
+        return { success: false, message: `Could not find GE price for "${itemName}". Check the item name spelling.` };
       }
       return {
         success: true,
@@ -270,33 +375,46 @@ const tools = {
       };
     },
   },
+  
+  searchWeb: {
+    description: 'Search the web for OSRS guides, Reddit discussions, or YouTube content.',
+    execute: async (query: string) => {
+      console.log(`[Tool] searchWeb: "${query}"`);
+      const results = await searchWeb(query, {
+        searchDepth: 'advanced',
+        maxResults: 5,
+        includeAnswer: true,
+      });
+      if (!results || results.results.length === 0) {
+        return { success: false, message: 'No web results found.' };
+      }
+      return {
+        success: true,
+        answer: results.answer || null,
+        results: results.results.slice(0, 3).map(r => ({
+          title: r.title,
+          url: r.url,
+          snippet: r.content.slice(0, 250),
+        })),
+      };
+    },
+  },
 };
 
-// OpenRouter tool definitions for function calling
+// OpenRouter tool definitions
 const toolDefinitions = [
   {
     type: 'function',
     function: {
       name: 'searchWiki',
-      description: 'Search the official OSRS Wiki for factual information like drop rates, quest requirements, item stats.',
+      description: 'Search the OSRS Wiki for a topic. Use when unsure of exact page name. Returns search results and top page summary.',
       parameters: {
         type: 'object',
         properties: {
-          query: { type: 'string', description: 'The search query for the OSRS Wiki' },
-        },
-        required: ['query'],
-      },
-    },
-  },
-  {
-    type: 'function',
-    function: {
-      name: 'searchWeb',
-      description: 'Search the web for OSRS community content like Reddit discussions, YouTube guides.',
-      parameters: {
-        type: 'object',
-        properties: {
-          query: { type: 'string', description: 'The search query' },
+          query: { 
+            type: 'string', 
+            description: 'Search query (e.g., "dragon scimitar", "zulrah guide", "quest requirements")' 
+          },
         },
         required: ['query'],
       },
@@ -306,11 +424,14 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'getWikiPage',
-      description: 'Get detailed content from a specific OSRS Wiki page.',
+      description: 'Read full content of a specific OSRS Wiki page. Use for detailed drop rates, quest steps, boss mechanics.',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: 'The exact title of the Wiki page' },
+          title: { 
+            type: 'string', 
+            description: 'Exact Wiki page title (e.g., "Abyssal whip", "Dragon Slayer II", "Zulrah")' 
+          },
         },
         required: ['title'],
       },
@@ -320,65 +441,83 @@ const toolDefinitions = [
     type: 'function',
     function: {
       name: 'getItemPrice',
-      description: 'Get real-time Grand Exchange prices for an OSRS item. Use this when users ask about item prices, costs, or when comparing GP/hr for money making methods.',
+      description: 'Get live Grand Exchange prices. Use when users ask about costs, item values, or money-making comparisons.',
       parameters: {
         type: 'object',
         properties: {
-          itemName: { type: 'string', description: 'The name of the OSRS item to get prices for (e.g., "Abyssal whip", "Dragon bones", "Bond")' },
+          itemName: { 
+            type: 'string', 
+            description: 'Item name (e.g., "Abyssal whip", "Dragon bones", "Twisted bow")' 
+          },
         },
         required: ['itemName'],
       },
     },
   },
+  {
+    type: 'function',
+    function: {
+      name: 'searchWeb',
+      description: 'Search for OSRS community content (Reddit, YouTube guides). Use for meta strategies or opinions.',
+      parameters: {
+        type: 'object',
+        properties: {
+          query: { 
+            type: 'string', 
+            description: 'Web search query (e.g., "best slayer block list 2024", "vorkath beginner guide")' 
+          },
+        },
+        required: ['query'],
+      },
+    },
+  },
 ];
+
+// ============================================
+// MAIN API HANDLER
+// ============================================
 
 export async function POST(req: Request) {
   try {
     const { messages, userContext, profile } = await req.json();
 
-    // Get the latest user message for RAG context retrieval
     const latestUserMessage = messages
       .slice()
       .reverse()
       .find((m: { role: string }) => m.role === 'user')?.content || '';
 
-    // Retrieve relevant context from vector store (if RAG is configured)
+    // Optional: RAG context retrieval
     let ragContext = '';
     if (isRAGConfigured() && latestUserMessage) {
       try {
         const relevantDocs = await retrieveContext(latestUserMessage, {
-          matchThreshold: 0.65,
-          matchCount: 3,
+          matchThreshold: 0.70,
+          matchCount: 2,
         });
         if (relevantDocs.length > 0) {
           ragContext = formatContextForPrompt(relevantDocs);
-          console.log(`RAG: Retrieved ${relevantDocs.length} relevant documents`);
+          console.log(`RAG: Retrieved ${relevantDocs.length} cached documents`);
         }
       } catch (ragError) {
         console.error('RAG retrieval error:', ragError);
-        // Continue without RAG context - graceful degradation
       }
     }
 
-    // Build system prompt with optional RAG context
     const baseSystemPrompt = buildSystemPrompt(userContext, profile);
     const systemPrompt = ragContext
-      ? `${baseSystemPrompt}\n\n${ragContext}`
+      ? `${baseSystemPrompt}\n\n### CACHED KNOWLEDGE (from previous lookups):\n${ragContext}`
       : baseSystemPrompt;
 
-    // Ensure messages are in the correct format for OpenRouter
     const formattedMessages = messages.map((msg: { role: string; content: string }) => ({
       role: msg.role === 'user' ? 'user' : 'assistant',
       content: typeof msg.content === 'string' ? msg.content : String(msg.content),
     }));
 
-    // Add system message at the beginning
     const allMessages = [
       { role: 'system', content: systemPrompt },
       ...formattedMessages,
     ];
 
-    // Use /chat/completions endpoint directly for better compatibility
     const response = await fetch('https://openrouter.ai/api/v1/chat/completions', {
       method: 'POST',
       headers: {
@@ -402,7 +541,6 @@ export async function POST(req: Request) {
       throw new Error(`OpenRouter API error: ${response.status}`);
     }
 
-    // Create a TransformStream to process the SSE response
     const encoder = new TextEncoder();
     const decoder = new TextDecoder();
 
@@ -439,7 +577,6 @@ export async function POST(req: Request) {
                   controller.enqueue(encoder.encode(delta.content));
                 }
 
-                // Handle tool calls
                 if (delta?.tool_calls) {
                   for (const toolCall of delta.tool_calls) {
                     const index = toolCall.index || 0;
@@ -456,9 +593,7 @@ export async function POST(req: Request) {
                   }
                 }
 
-                // Check if we finished with tool calls (finish_reason: tool_calls)
                 if (parsed.choices?.[0]?.finish_reason === 'tool_calls' && pendingToolCalls.length > 0) {
-                  // Execute tools and get results
                   for (const toolCall of pendingToolCalls) {
                     if (!toolCall.name || !toolCall.arguments) continue;
 
@@ -467,15 +602,14 @@ export async function POST(req: Request) {
                       const toolFn = tools[toolCall.name as keyof typeof tools];
                       
                       if (toolFn) {
-                        // Extract the appropriate argument based on tool type
                         const toolArg = args.query || args.title || args.itemName;
+                        
+                        // Show user that we're researching
+                        const statusText = `\n\n📖 *Checking ${toolCall.name === 'getWikiPage' ? 'Wiki page' : toolCall.name === 'searchWiki' ? 'Wiki' : toolCall.name === 'getItemPrice' ? 'GE prices' : 'web'}: "${toolArg}"...*\n\n`;
+                        controller.enqueue(encoder.encode(statusText));
+                        
                         const result = await toolFn.execute(toolArg);
                         
-                        // Send tool result as markdown to user
-                        const toolResultText = `\n\n*[Searched: ${toolCall.name}]*\n\n`;
-                        controller.enqueue(encoder.encode(toolResultText));
-                        
-                        // Make a follow-up call with tool results
                         const toolResultMessages = [
                           ...allMessages,
                           {
@@ -494,7 +628,6 @@ export async function POST(req: Request) {
                           },
                         ];
 
-                        // Get the AI's response after tool execution
                         const followUpResponse = await fetch('https://openrouter.ai/api/v1/chat/completions', {
                           method: 'POST',
                           headers: {
@@ -539,6 +672,7 @@ export async function POST(req: Request) {
                       }
                     } catch (toolError) {
                       console.error('Tool execution error:', toolError);
+                      controller.enqueue(encoder.encode(`\n\n⚠️ *Tool error, continuing without...*\n\n`));
                     }
                   }
                 }
