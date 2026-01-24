@@ -5,14 +5,14 @@
   --osrs-bg: #1e1e1e;
   --osrs-chat: #131313;
   --osrs-panel: #3a4433;
-  --osrs-panel-dark: #3a4433;
+  --osrs-panel-dark: #181510;
   --osrs-border: #1b1a19;
   --osrs-border-light: #6d5a4a;
-  --osrs-yellow: #acac3e;
+  --osrs-yellow: #EDDA97;
   --osrs-orange: #a36927;
   --osrs-red: #800000;
   --osrs-cyan: #00ffff;
-  --osrs-green: #308b30;
+  --osrs-green: #6C6C00;
   --osrs-white: #ffffff;
   
   /* Background and foreground */
@@ -139,7 +139,7 @@ body {
 
 /* Selection color - OSRS orange */
 ::selection {
-  background: rgba(255, 152, 31, 0.4);
+  background: rgba(70, 128, 62, 0.4);
   color: var(--osrs-yellow);
 }
 
