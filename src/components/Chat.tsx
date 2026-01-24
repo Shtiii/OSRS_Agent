@@ -90,12 +90,19 @@ export default function Chat({ userContext }: ChatProps) {
         done = readerDone;
 
         if (value) {
-          const text = decoder.decode(value);
+          const text = decoder.decode(value, { stream: true }); // added stream: true for safety
+          
           setMessages((prev) => {
             const updated = [...prev];
-            const lastMsg = updated[updated.length - 1];
+            const lastIndex = updated.length - 1;
+            
+            // FIX: Create a COPY of the message object before modifying it.
+            // This prevents the "HeyHey" stuttering bug in React Strict Mode.
+            const lastMsg = { ...updated[lastIndex] }; 
+
             if (lastMsg.role === 'assistant') {
               lastMsg.content += text;
+              updated[lastIndex] = lastMsg;
             }
             return updated;
           });

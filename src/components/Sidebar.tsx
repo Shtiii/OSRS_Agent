@@ -78,11 +78,8 @@ export default function Sidebar({
     }
   };
 
-  // FIX: This now looks directly at skills.overall instead of "computed"
   const getTotalLevel = () => {
     if (!stats?.latestSnapshot?.data?.skills) return 0;
-    
-    // The API puts the total level here:
     const overall = stats.latestSnapshot.data.skills.overall;
     if (overall && overall.level) {
         return overall.level;
@@ -105,9 +102,10 @@ export default function Sidebar({
   };
 
   return (
-    <div className="w-80 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
+    // FIX 1: Increased width from w-80 to w-96 to handle the extra padding
+    <div className="w-96 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
       {/* Header */}
-      <div className="p-4 border-b border-gray-800">
+      <div className="p-6 border-b border-gray-800">
         <h1 className="text-xl font-bold text-amber-500 flex items-center gap-2">
           <Swords className="w-6 h-6" />
           OSRS Helper
@@ -116,7 +114,7 @@ export default function Sidebar({
       </div>
 
       {/* Username Input */}
-      <div className="p-4 border-b border-gray-800">
+      <div className="p-6 border-b border-gray-800">
         <form onSubmit={handleSubmit}>
           <label className="block text-sm font-medium text-gray-300 mb-2">
             <User className="w-4 h-4 inline mr-1" />
@@ -133,8 +131,9 @@ export default function Sidebar({
             <button
               type="submit"
               disabled={isLoading || !inputValue.trim()}
+              // FIX 2: Added 'shrink-0' so the button never gets squashed
               className={cn(
-                'px-3 py-2 rounded-lg font-medium transition-colors',
+                'px-4 py-2 rounded-lg font-medium transition-colors shrink-0',
                 isLoading || !inputValue.trim()
                   ? 'bg-gray-700 text-gray-500 cursor-not-allowed'
                   : 'bg-amber-600 text-white hover:bg-amber-500'
@@ -163,7 +162,7 @@ export default function Sidebar({
 
       {/* Stats Cards */}
       {stats && (
-        <div className="p-4 border-b border-gray-800 space-y-3">
+        <div className="p-6 border-b border-gray-800 space-y-3">
           <div className="bg-gray-800 rounded-lg p-3">
             <div className="flex items-center justify-between">
               <span className="text-gray-400 text-sm">Total Level</span>
@@ -215,7 +214,7 @@ export default function Sidebar({
       )}
 
       {/* Collection Log Upload */}
-      <div className="p-4 border-b border-gray-800">
+      <div className="p-6 border-b border-gray-800">
         <label className="block text-sm font-medium text-gray-300 mb-2">
           <FileJson className="w-4 h-4 inline mr-1" />
           Collection Log JSON
@@ -257,7 +256,7 @@ export default function Sidebar({
 
       {/* Rare Items Preview */}
       {rareItems.length > 0 && (
-        <div className="p-4 flex-1 overflow-y-auto">
+        <div className="p-6 flex-1 overflow-y-auto">
           <h3 className="text-sm font-medium text-gray-300 mb-2">
             Notable Items ({rareItems.length})
           </h3>
@@ -283,7 +282,7 @@ export default function Sidebar({
       )}
 
       {/* Footer */}
-      <div className="p-4 border-t border-gray-800 mt-auto">
+      <div className="p-6 border-t border-gray-800 mt-auto">
         <p className="text-xs text-gray-500 text-center">
           Powered by Wise Old Man & OSRS Wiki
         </p>
