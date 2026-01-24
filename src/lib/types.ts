@@ -134,4 +134,5 @@ export interface WikiPageContent {
   pageid: number;
   extract: string;
   fullurl: string;
+  imageUrl?: string | null;
 }

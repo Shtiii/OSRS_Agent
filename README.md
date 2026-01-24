@@ -23,6 +23,17 @@ A Context-Aware OSRS (Old School RuneScape) AI Agent Dashboard built with Next.j
 - The AI can search the OSRS Wiki for factual information
 - The AI can search the web (via Tavily) for community guides and recent strategies
 
+### 💾 Persistent Storage (NEW!)
+- **Chat History**: Automatically saves your conversations to Supabase
+- **Long-Term Memory**: The AI remembers important facts about your account
+- **Profile Sync**: Your OSRS username and account type are saved across sessions
+- **Guest Mode**: Works without Supabase configured (no persistence)
+
+### 🧠 Long-Term Memory (NEW!)
+- The AI remembers achievements you mention (Fire Cape, Inferno, rare drops)
+- Stores your goals and play style preferences
+- Injects memory context into every conversation for personalized advice
+
 ### 🛠️ Built-in Tools
 1. **searchWiki** - Search the official OSRS Wiki for drop rates, quest requirements, item stats
 2. **searchWeb** - Find Reddit threads, YouTube guides, and community strategies
@@ -34,6 +45,7 @@ A Context-Aware OSRS (Old School RuneScape) AI Agent Dashboard built with Next.j
 - Node.js 18+
 - npm or yarn
 - API Keys (see below)
+- Supabase account (optional, for persistence)
 
 ### Installation
 
@@ -50,7 +62,7 @@ npm install
 3. Set up environment variables:
 ```bash
 # Copy the example env file
-cp .env.local.example .env.local
+cp .env.example .env.local
 ```
 
 4. Add your API keys to `.env.local`:
@@ -63,14 +75,55 @@ TAVILY_API_KEY=your_tavily_api_key_here
 
 # Optional: Change the AI model
 OPENROUTER_MODEL=anthropic/claude-sonnet-4
+
+# Supabase Configuration (optional - for persistent storage)
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
 ```
 
-5. Run the development server:
+5. (Optional) Set up Supabase for persistent storage - see [Supabase Setup](#supabase-setup)
+
+6. Run the development server:
 ```bash
 npm run dev
 ```
 
-6. Open [http://localhost:3000](http://localhost:3000) in your browser.
+7. Open [http://localhost:3000](http://localhost:3000) in your browser.
+
+## Supabase Setup (Optional)
+
+Setting up Supabase enables persistent chat history and long-term memory.
+
+### 1. Create a Supabase Project
+1. Go to [Supabase](https://supabase.com/) and create a new project
+2. Wait for the project to be provisioned
+
+### 2. Run the Database Schema
+1. In your Supabase dashboard, go to **SQL Editor**
+2. Copy the contents of `supabase-schema.sql` from this repository
+3. Paste and run the SQL to create the required tables:
+   - `profiles` - Stores user preferences and long-term memory
+   - `chats` - Stores conversation threads
+   - `messages` - Stores individual messages
+
+### 3. Get Your API Keys
+1. Go to **Settings > API** in your Supabase dashboard
+2. Copy the **Project URL** → `NEXT_PUBLIC_SUPABASE_URL`
+3. Copy the **anon public** key → `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+
+### 4. Add to Environment Variables
+Add these to your `.env.local`:
+```env
+NEXT_PUBLIC_SUPABASE_URL=https://your-project-id.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=your-anon-key-here
+```
+
+### Guest Mode
+If Supabase is not configured, the app runs in "Guest Mode":
+- All features work normally
+- Chat history is not saved between sessions
+- Long-term memory is not available
+- A cloud icon in the sidebar indicates sync status
 
 ## API Keys
 
@@ -96,6 +149,12 @@ npm run dev
 2. Export your collection log as JSON
 3. Upload the file in the sidebar
 
+### Chat History (Requires Supabase)
+- Click "New Chat" to start a fresh conversation
+- Previous chats appear in the "History" section
+- Click a chat to load it
+- Delete chats by hovering and clicking the trash icon
+
 ### Asking Questions
 Try these example prompts:
 - "What boss should I do with my stats?"
@@ -112,23 +171,29 @@ osrs-agent/
 │   ├── app/
 │   │   ├── api/
 │   │   │   ├── chat/
-│   │   │   │   └── route.ts    # AI chat endpoint with tools
+│   │   │   │   └── route.ts      # AI chat endpoint with tools & memory
 │   │   │   └── player/
-│   │   │       └── route.ts    # Player stats endpoint
+│   │   │       └── route.ts      # Player stats endpoint
 │   │   ├── globals.css
 │   │   ├── layout.tsx
 │   │   └── page.tsx
 │   ├── components/
-│   │   ├── Chat.tsx            # Main chat interface
-│   │   ├── Dashboard.tsx       # Dashboard container
-│   │   └── Sidebar.tsx         # Sidebar with stats & upload
+│   │   ├── Chat.tsx              # Main chat interface with persistence
+│   │   ├── Dashboard.tsx         # Dashboard container with state
+│   │   └── Sidebar.tsx           # Sidebar with stats, history & upload
+│   ├── hooks/
+│   │   └── useSupabase.ts        # Supabase hooks for persistence
 │   └── lib/
-│       ├── osrs.ts             # Wise Old Man & Wiki API functions
-│       ├── parser.ts           # Collection log parser
-│       ├── tavily.ts           # Tavily search functions
-│       ├── types.ts            # TypeScript interfaces
-│       └── utils.ts            # Utility functions
-├── .env.local                  # Environment variables
+│       ├── database.types.ts     # Supabase database types
+│       ├── osrs.ts               # Wise Old Man & Wiki API functions
+│       ├── parser.ts             # Collection log parser
+│       ├── supabase.ts           # Supabase client configuration
+│       ├── tavily.ts             # Tavily search functions
+│       ├── types.ts              # TypeScript interfaces
+│       └── utils.ts              # Utility functions
+├── supabase-schema.sql           # Database schema for Supabase
+├── .env.example                  # Example environment variables
+├── .env.local                    # Your environment variables (git ignored)
 ├── package.json
 └── README.md
 ```
@@ -140,10 +205,12 @@ osrs-agent/
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide React
 - **AI**: Vercel AI SDK with OpenRouter
+- **Database**: Supabase (PostgreSQL) - optional
 - **APIs**:
   - [Wise Old Man API](https://docs.wiseoldman.net/)
   - [OSRS Wiki API](https://oldschool.runescape.wiki/w/API:Main_page)
   - [Tavily Search API](https://tavily.com/)
+  - [Supabase](https://supabase.com/)
 
 ## Contributing
 

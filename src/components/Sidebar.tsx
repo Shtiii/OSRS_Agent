@@ -11,9 +11,18 @@ import {
   CheckCircle,
   AlertCircle,
   Loader2,
+  MessageSquare,
+  Plus,
+  Trash2,
+  Clock,
+  Brain,
+  Cloud,
+  CloudOff,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import type { WOMPlayerDetails, WOMGains, CollectionLogData, CollectionLogItem } from '@/lib/types';
+import type { ProfileRow } from '@/lib/database.types';
+import type { ChatHistoryItem } from '@/hooks/useSupabase';
 import { parseCollectionLog, extractRareItems } from '@/lib/parser';
 
 interface SidebarProps {
@@ -27,6 +36,15 @@ interface SidebarProps {
   onUpdateStats: () => void;
   onCollectionLogParsed: (data: CollectionLogData, rareItems: CollectionLogItem[]) => void;
   isLoading: boolean;
+  // New props for chat history
+  chatHistory: ChatHistoryItem[];
+  currentChatId: string | null;
+  onNewChat: () => void;
+  onSelectChat: (chatId: string) => void;
+  onDeleteChat: (chatId: string) => void;
+  isChatsLoading: boolean;
+  isSupabaseConfigured: boolean;
+  profile: ProfileRow | null;
 }
 
 export default function Sidebar({
@@ -40,10 +58,20 @@ export default function Sidebar({
   onUpdateStats,
   onCollectionLogParsed,
   isLoading,
+  // New props
+  chatHistory,
+  currentChatId,
+  onNewChat,
+  onSelectChat,
+  onDeleteChat,
+  isChatsLoading,
+  isSupabaseConfigured,
+  profile,
 }: SidebarProps) {
   const [inputValue, setInputValue] = useState(username);
   const [fileStatus, setFileStatus] = useState<'idle' | 'success' | 'error'>('idle');
   const [fileName, setFileName] = useState<string | null>(null);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -82,7 +110,7 @@ export default function Sidebar({
     if (!stats?.latestSnapshot?.data?.skills) return 0;
     const overall = stats.latestSnapshot.data.skills.overall;
     if (overall && overall.level) {
-        return overall.level;
+      return overall.level;
     }
     return 0;
   };
@@ -101,8 +129,17 @@ export default function Sidebar({
     return xp.toString();
   };
 
+  const handleDeleteClick = (chatId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    setShowDeleteConfirm(chatId);
+  };
+
+  const confirmDelete = (chatId: string) => {
+    onDeleteChat(chatId);
+    setShowDeleteConfirm(null);
+  };
+
   return (
-    // FIX 1: Increased width from w-80 to w-96 to handle the extra padding
     <div className="w-96 bg-gray-900 border-r border-gray-800 flex flex-col h-full">
       {/* Header */}
       <div className="p-6 border-b border-gray-800">
@@ -110,8 +147,110 @@ export default function Sidebar({
           <Swords className="w-6 h-6" />
           OSRS Helper
         </h1>
-        <p className="text-gray-400 text-sm mt-1">Your AI-powered companion</p>
+        <div className="flex items-center gap-2 mt-1">
+          <p className="text-gray-400 text-sm">Your AI-powered companion</p>
+          {isSupabaseConfigured ? (
+            <div className="flex items-center gap-1 text-green-500" title="Cloud sync enabled">
+              <Cloud className="w-3 h-3" />
+            </div>
+          ) : (
+            <div className="flex items-center gap-1 text-gray-500" title="Guest mode - no sync">
+              <CloudOff className="w-3 h-3" />
+            </div>
+          )}
+        </div>
       </div>
+
+      {/* New Chat Button */}
+      <div className="px-6 py-3 border-b border-gray-800">
+        <button
+          onClick={onNewChat}
+          className="w-full flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-600 hover:bg-amber-500 text-white font-medium rounded-lg transition-colors"
+        >
+          <Plus className="w-5 h-5" />
+          New Chat
+        </button>
+      </div>
+
+      {/* Chat History */}
+      {isSupabaseConfigured && (
+        <div className="px-4 py-3 border-b border-gray-800 max-h-48 overflow-y-auto">
+          <div className="flex items-center gap-2 mb-2 px-2">
+            <Clock className="w-4 h-4 text-gray-400" />
+            <span className="text-sm font-medium text-gray-300">History</span>
+            {isChatsLoading && <Loader2 className="w-3 h-3 animate-spin text-gray-400" />}
+          </div>
+          
+          {chatHistory.length === 0 ? (
+            <p className="text-xs text-gray-500 px-2">No previous chats</p>
+          ) : (
+            <div className="space-y-1">
+              {chatHistory.map((chat) => (
+                <div
+                  key={chat.id}
+                  onClick={() => onSelectChat(chat.id)}
+                  className={cn(
+                    'group flex items-center gap-2 px-2 py-2 rounded-lg cursor-pointer transition-colors',
+                    currentChatId === chat.id
+                      ? 'bg-amber-600/20 text-amber-400'
+                      : 'hover:bg-gray-800 text-gray-300'
+                  )}
+                >
+                  <MessageSquare className="w-4 h-4 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm truncate">{chat.title}</p>
+                    <p className="text-xs text-gray-500">{chat.formattedDate}</p>
+                  </div>
+                  
+                  {showDeleteConfirm === chat.id ? (
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          confirmDelete(chat.id);
+                        }}
+                        className="p-1 text-red-400 hover:text-red-300"
+                        title="Confirm delete"
+                      >
+                        <CheckCircle className="w-4 h-4" />
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowDeleteConfirm(null);
+                        }}
+                        className="p-1 text-gray-400 hover:text-gray-300"
+                        title="Cancel"
+                      >
+                        <AlertCircle className="w-4 h-4" />
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={(e) => handleDeleteClick(chat.id, e)}
+                      className="p-1 opacity-0 group-hover:opacity-100 text-gray-500 hover:text-red-400 transition-opacity"
+                      title="Delete chat"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Memory Status (if profile has memory notes) */}
+      {profile?.memory_notes && (
+        <div className="px-6 py-3 border-b border-gray-800">
+          <div className="flex items-center gap-2 mb-1">
+            <Brain className="w-4 h-4 text-purple-400" />
+            <span className="text-sm font-medium text-gray-300">Memory</span>
+          </div>
+          <p className="text-xs text-gray-400 line-clamp-2">{profile.memory_notes}</p>
+        </div>
+      )}
 
       {/* Username Input */}
       <div className="p-6 border-b border-gray-800">
@@ -131,7 +270,6 @@ export default function Sidebar({
             <button
               type="submit"
               disabled={isLoading || !inputValue.trim()}
-              // FIX 2: Added 'shrink-0' so the button never gets squashed
               className={cn(
                 'px-4 py-2 rounded-lg font-medium transition-colors shrink-0',
                 isLoading || !inputValue.trim()

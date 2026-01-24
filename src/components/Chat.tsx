@@ -1,6 +1,6 @@
 'use client';
 
-import { useRef, useEffect, useState } from 'react';
+import { useRef, useEffect, useState, useCallback } from 'react';
 import {
   Send,
   Bot,
@@ -12,25 +12,52 @@ import {
   AlertCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useMessages } from '@/hooks/useSupabase';
 import type { UserContext } from '@/lib/types';
+import type { ProfileRow } from '@/lib/database.types';
 
 interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  dbId?: string; // Database ID for updating
 }
 
 interface ChatProps {
   userContext: UserContext;
+  // New props for persistence
+  chatId: string | null;
+  onCreateChat: (firstMessage: string) => Promise<string | null>;
+  onUpdateChatTitle: (chatId: string, title: string) => Promise<void>;
+  profile: ProfileRow | null;
 }
 
-export default function Chat({ userContext }: ChatProps) {
+export default function Chat({ 
+  userContext, 
+  chatId, 
+  onCreateChat, 
+  onUpdateChatTitle,
+  profile 
+}: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<Error | null>(null);
+  const [isFirstMessage, setIsFirstMessage] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const pendingAssistantMessageRef = useRef<string | null>(null);
 
+  // Supabase hooks for message persistence
+  const { 
+    messages: dbMessages, 
+    isLoading: isDbLoading, 
+    saveMessage, 
+    saveMessageToChat,
+    updateMessage,
+    fetchMessages 
+  } = useMessages(chatId);
+
+  // Scroll to bottom when messages change
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
@@ -39,14 +66,47 @@ export default function Chat({ userContext }: ChatProps) {
     scrollToBottom();
   }, [messages]);
 
+  // Load messages from database when chatId changes
+  useEffect(() => {
+    if (chatId && dbMessages.length > 0) {
+      const loadedMessages: Message[] = dbMessages.map((msg) => ({
+        id: msg.id,
+        role: msg.role,
+        content: msg.content,
+        dbId: msg.id,
+      }));
+      setMessages(loadedMessages);
+      setIsFirstMessage(false);
+    } else if (!chatId) {
+      // New chat - clear messages
+      setMessages([]);
+      setIsFirstMessage(true);
+    }
+  }, [chatId, dbMessages]);
+
+  // Save assistant message when streaming completes (accepts explicit chatId)
+  const saveAssistantMessageToDb = useCallback(async (targetChatId: string, messageId: string, content: string) => {
+    if (targetChatId && content) {
+      const dbId = await saveMessageToChat(targetChatId, 'assistant', content);
+      if (dbId) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === messageId ? { ...msg, dbId } : msg
+          )
+        );
+      }
+    }
+  }, [saveMessageToChat]);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
 
+    const userMessageContent = input.trim();
     const userMessage: Message = {
       id: Date.now().toString(),
       role: 'user',
-      content: input.trim(),
+      content: userMessageContent,
     };
 
     setMessages((prev) => [...prev, userMessage]);
@@ -54,16 +114,47 @@ export default function Chat({ userContext }: ChatProps) {
     setIsLoading(true);
     setError(null);
 
+    // If this is the first message, create a new chat
+    let currentChatId = chatId;
+    if (isFirstMessage && !chatId) {
+      currentChatId = await onCreateChat(userMessageContent);
+      setIsFirstMessage(false);
+    }
+
+    // Save user message to database (use saveMessageToChat with explicit chatId for new chats)
+    if (currentChatId) {
+      const dbId = await saveMessageToChat(currentChatId, 'user', userMessageContent);
+      if (dbId) {
+        setMessages((prev) =>
+          prev.map((msg) =>
+            msg.id === userMessage.id ? { ...msg, dbId } : msg
+          )
+        );
+      }
+    }
+
     try {
+      // Only include messages with non-empty content and valid roles
+      const messagesToSend = [...messages, userMessage]
+        .filter((m) => m.content && m.content.trim().length > 0)
+        .map((m) => ({
+          role: m.role as 'user' | 'assistant',
+          content: m.content.trim(),
+        }));
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          messages: [...messages, userMessage].map((m) => ({
-            role: m.role,
-            content: m.content,
-          })),
+          messages: messagesToSend,
           userContext,
+          profile: profile ? {
+            memoryNotes: profile.memory_notes,
+            achievements: profile.achievements,
+            notableItems: profile.notable_items,
+            goals: profile.goals,
+            playStyle: profile.play_style,
+          } : null,
         }),
       });
 
@@ -74,31 +165,32 @@ export default function Chat({ userContext }: ChatProps) {
       const reader = response.body?.getReader();
       if (!reader) throw new Error('No reader available');
 
+      const assistantMessageId = (Date.now() + 1).toString();
       const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
+        id: assistantMessageId,
         role: 'assistant',
         content: '',
       };
 
       setMessages((prev) => [...prev, assistantMessage]);
+      pendingAssistantMessageRef.current = assistantMessageId;
 
       const decoder = new TextDecoder();
       let done = false;
+      let fullContent = '';
 
       while (!done) {
         const { value, done: readerDone } = await reader.read();
         done = readerDone;
 
         if (value) {
-          const text = decoder.decode(value, { stream: true }); // added stream: true for safety
+          const text = decoder.decode(value, { stream: true });
+          fullContent += text;
           
           setMessages((prev) => {
             const updated = [...prev];
             const lastIndex = updated.length - 1;
-            
-            // FIX: Create a COPY of the message object before modifying it.
-            // This prevents the "HeyHey" stuttering bug in React Strict Mode.
-            const lastMsg = { ...updated[lastIndex] }; 
+            const lastMsg = { ...updated[lastIndex] };
 
             if (lastMsg.role === 'assistant') {
               lastMsg.content += text;
@@ -108,8 +200,16 @@ export default function Chat({ userContext }: ChatProps) {
           });
         }
       }
+
+      // Save assistant message to database after streaming completes
+      if (currentChatId && fullContent) {
+        await saveAssistantMessageToDb(currentChatId, assistantMessageId, fullContent);
+      }
+
+      pendingAssistantMessageRef.current = null;
     } catch (err) {
       setError(err instanceof Error ? err : new Error('Unknown error'));
+      pendingAssistantMessageRef.current = null;
     } finally {
       setIsLoading(false);
     }
@@ -140,6 +240,9 @@ export default function Chat({ userContext }: ChatProps) {
               {userContext.username
                 ? `Helping ${userContext.stats?.displayName || userContext.username}`
                 : 'Enter your username to get personalized advice'}
+              {profile?.memory_notes && (
+                <span className="text-purple-400"> • Memory active</span>
+              )}
             </p>
           </div>
           {userContext.stats && (
@@ -163,7 +266,11 @@ export default function Chat({ userContext }: ChatProps) {
 
       {/* Messages Area */}
       <div className="flex-1 overflow-y-auto px-6 py-4 space-y-4">
-        {messages.length === 0 ? (
+        {isDbLoading ? (
+          <div className="flex items-center justify-center h-full">
+            <Loader2 className="w-8 h-8 animate-spin text-amber-500" />
+          </div>
+        ) : messages.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-center">
             <div className="w-16 h-16 rounded-full bg-amber-600/20 flex items-center justify-center mb-4">
               <Sparkles className="w-8 h-8 text-amber-500" />
@@ -193,6 +300,14 @@ export default function Chat({ userContext }: ChatProps) {
                 <p className="text-amber-400 text-sm">
                   💡 Enter your RuneScape username in the sidebar to get
                   personalized advice based on your stats!
+                </p>
+              </div>
+            )}
+
+            {profile?.memory_notes && (
+              <div className="mt-4 p-4 bg-purple-900/20 border border-purple-800/50 rounded-lg max-w-md">
+                <p className="text-purple-400 text-sm">
+                  🧠 I remember: {profile.memory_notes}
                 </p>
               </div>
             )}
@@ -373,8 +488,55 @@ function MessageContent({ content }: { content: string }) {
   );
 }
 
-// Format inline text (bold, italic, code)
+// Format inline text (bold, italic, code, images)
 function formatInlineText(text: string): React.ReactNode {
+  // Check for markdown images first: ![alt](url)
+  const imageRegex = /!\[([^\]]*)\]\(([^)]+)\)/g;
+  const parts: React.ReactNode[] = [];
+  let lastIndex = 0;
+  let match;
+
+  while ((match = imageRegex.exec(text)) !== null) {
+    // Add text before the image
+    if (match.index > lastIndex) {
+      parts.push(formatTextOnly(text.slice(lastIndex, match.index)));
+    }
+    
+    // Add the image
+    const altText = match[1];
+    const imageUrl = match[2];
+    parts.push(
+      <div key={`img-${match.index}`} className="my-3 inline-block">
+        <div className="border-2 border-amber-600/50 bg-black/40 rounded-lg p-2 inline-block">
+          <img
+            src={imageUrl}
+            alt={altText}
+            className="max-w-[200px] max-h-[200px] object-contain rounded"
+            loading="lazy"
+            onError={(e) => {
+              (e.target as HTMLImageElement).style.display = 'none';
+            }}
+          />
+          {altText && (
+            <p className="text-xs text-gray-400 text-center mt-1">{altText}</p>
+          )}
+        </div>
+      </div>
+    );
+    
+    lastIndex = match.index + match[0].length;
+  }
+
+  // Add remaining text after last image
+  if (lastIndex < text.length) {
+    parts.push(formatTextOnly(text.slice(lastIndex)));
+  }
+
+  return parts.length > 0 ? parts : formatTextOnly(text);
+}
+
+// Format text without images (bold, code)
+function formatTextOnly(text: string): React.ReactNode {
   // Simple bold and code formatting
   const parts = text.split(/(\*\*[^*]+\*\*|`[^`]+`)/g);
   
