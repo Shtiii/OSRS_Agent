@@ -392,3 +392,119 @@ body {
 .suggestion-chip:active {
   transform: translateY(0);
 }
+
+/* ===== Mobile Viewport Utilities ===== */
+@supports (height: 100dvh) {
+  .h-screen-safe {
+    height: 100dvh;
+  }
+}
+
+.pb-safe {
+  padding-bottom: env(safe-area-inset-bottom, 0px);
+}
+
+/* ===== Mobile Sidebar Overlay ===== */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 40;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  pointer-events: none;
+}
+
+.sidebar-backdrop.open {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.sidebar-drawer {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 50;
+  transform: translateX(-100%);
+  transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  width: 85vw;
+  max-width: 340px;
+}
+
+.sidebar-drawer.open {
+  transform: translateX(0);
+}
+
+@media (min-width: 768px) {
+  .sidebar-drawer {
+    position: relative;
+    transform: none;
+    width: 340px;
+    max-width: none;
+    z-index: auto;
+  }
+  
+  .sidebar-backdrop {
+    display: none;
+  }
+}
+
+/* ===== Hamburger Menu Button ===== */
+.hamburger-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  border-radius: 8px;
+  background: transparent;
+  border: 1px solid var(--osrs-border);
+  color: var(--osrs-orange);
+  cursor: pointer;
+  transition: all 0.2s ease;
+  flex-shrink: 0;
+}
+
+.hamburger-btn:hover {
+  background: var(--osrs-panel);
+  border-color: var(--osrs-orange);
+}
+
+@media (min-width: 768px) {
+  .hamburger-btn {
+    display: none;
+  }
+}
+
+/* ===== Mobile-specific overrides ===== */
+@media (max-width: 767px) {
+  body {
+    overflow: auto;
+    overflow-x: hidden;
+    -webkit-overflow-scrolling: touch;
+  }
+  
+  .osrs-button {
+    min-height: 44px;
+  }
+  
+  .osrs-input {
+    font-size: 16px; /* Prevents iOS zoom on focus */
+    min-height: 44px;
+  }
+  
+  ::-webkit-scrollbar {
+    width: 0;
+    height: 0;
+  }
+  
+  .suggestion-chip:hover {
+    transform: none;
+  }
+  
+  .suggestion-chip:active {
+    background: var(--osrs-panel-accent);
+    border-color: var(--osrs-orange);
+  }
+}

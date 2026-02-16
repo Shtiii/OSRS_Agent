@@ -14,6 +14,7 @@ import {
   User,
   Square,
   X,
+  Menu,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMessages } from '@/hooks/useSupabase';
@@ -33,6 +34,8 @@ interface ChatProps {
   onCreateChat: (firstMessage: string) => Promise<string | null>;
   onUpdateChatTitle: (chatId: string, title: string) => Promise<void>;
   profile: ProfileRow | null;
+  onToggleSidebar?: () => void;
+  isMobile?: boolean;
 }
 
 export default function Chat({ 
@@ -40,7 +43,9 @@ export default function Chat({
   chatId, 
   onCreateChat, 
   onUpdateChatTitle,
-  profile 
+  profile,
+  onToggleSidebar,
+  isMobile,
 }: ChatProps) {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
@@ -266,8 +271,18 @@ export default function Chat({
   return (
     <div className="flex-1 flex flex-col h-full bg-[var(--osrs-bg)]">
       {/* Chat Header */}
-      <div className="px-5 py-3.5 border-b border-[var(--osrs-border)] bg-[var(--osrs-panel-dark)]">
-        <div className="flex items-center gap-3">
+      <div className="px-3 md:px-5 py-3.5 border-b border-[var(--osrs-border)] bg-[var(--osrs-panel-dark)]">
+        <div className="flex items-center gap-2 md:gap-3">
+          {/* Hamburger menu — mobile only */}
+          {onToggleSidebar && (
+            <button
+              onClick={onToggleSidebar}
+              className="hamburger-btn md:hidden"
+              aria-label="Open menu"
+            >
+              <Menu className="w-5 h-5" />
+            </button>
+          )}
           <div className="w-9 h-9 rounded-lg bg-gradient-to-br from-[var(--osrs-yellow)]/20 to-[var(--osrs-orange)]/10 border border-[var(--osrs-yellow)]/20 flex items-center justify-center">
             <Bot className="w-5 h-5 text-[var(--osrs-yellow)]" />
           </div>
@@ -292,7 +307,7 @@ export default function Chat({
             </p>
           </div>
           {userContext.stats && (
-            <div className="flex items-center gap-2">
+            <div className="hidden sm:flex items-center gap-2">
               <div className="px-2.5 py-1 rounded-md bg-[var(--osrs-yellow)]/10 border border-[var(--osrs-yellow)]/20">
                 <span className="text-xs font-medium text-[var(--osrs-yellow)]">
                   Cmb {userContext.stats.combatLevel}
@@ -446,7 +461,7 @@ export default function Chat({
       </div>
 
       {/* Input Area */}
-      <div className="px-4 md:px-6 py-4 border-t border-[var(--osrs-border)] bg-[var(--osrs-panel-dark)]">
+      <div className="px-4 md:px-6 py-4 border-t border-[var(--osrs-border)] bg-[var(--osrs-panel-dark)] pb-safe">
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
           <div className="flex gap-2.5 items-end">
             <div className="flex-1 relative">
@@ -465,9 +480,9 @@ export default function Chat({
                     }
                   }
                 }}
-                placeholder="Ask about bosses, quests, money making... (Shift+Enter for new line)"
+                placeholder={isMobile ? "Ask anything about OSRS..." : "Ask about bosses, quests, money making... (Shift+Enter for new line)"}
                 className="osrs-input block w-full text-sm resize-none overflow-y-auto"
-                style={{ maxHeight: '200px' }}
+                style={{ maxHeight: isMobile ? '120px' : '200px' }}
                 rows={1}
                 disabled={isLoading}
               />

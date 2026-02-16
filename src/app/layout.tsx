@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono, Press_Start_2P } from "next/font/google";
 import { AuthProvider } from "@/components/AuthProvider";
 import "./globals.css";
@@ -25,6 +25,13 @@ export const metadata: Metadata = {
   description: "Get personalized OSRS advice based on your stats, gear recommendations, boss strategies, and more with AI-powered assistance.",
   keywords: ["OSRS", "Old School RuneScape", "RuneScape", "AI", "Assistant", "Guide", "Boss", "Gear"],
   icons: { icon: "/favicon.ico" },
+};
+
+export const viewport: Viewport = {
+  width: 'device-width',
+  initialScale: 1,
+  maximumScale: 1,
+  viewportFit: 'cover',
 };
 
 export default function RootLayout({

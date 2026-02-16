@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Sidebar from './Sidebar';
 import Chat from './Chat';
+import { cn } from '@/lib/utils';
 import { useChats, useProfile, ChatHistoryItem } from '@/hooks/useSupabase';
 import type { WOMPlayerDetails, WOMGains, CollectionLogData, CollectionLogItem, UserContext } from '@/lib/types';
 
@@ -154,6 +155,35 @@ export default function Dashboard() {
     }
   }, [deleteChat, currentChatId]);
 
+  // Mobile sidebar state
+  const [isSidebarOpen, setIsSidebarOpen] = useState(false);
+  const [isMobile, setIsMobile] = useState(false);
+
+  useEffect(() => {
+    const checkMobile = () => setIsMobile(window.innerWidth < 768);
+    checkMobile();
+    window.addEventListener('resize', checkMobile);
+    return () => window.removeEventListener('resize', checkMobile);
+  }, []);
+
+  const handleSelectChatMobile = useCallback((chatId: string) => {
+    handleSelectChat(chatId);
+    if (window.innerWidth < 768) setIsSidebarOpen(false);
+  }, [handleSelectChat]);
+
+  const handleNewChatMobile = useCallback(() => {
+    handleNewChat();
+    if (window.innerWidth < 768) setIsSidebarOpen(false);
+  }, [handleNewChat]);
+
+  const toggleSidebar = useCallback(() => {
+    setIsSidebarOpen(prev => !prev);
+  }, []);
+
+  const closeSidebar = useCallback(() => {
+    setIsSidebarOpen(false);
+  }, []);
+
   // Persist username to localStorage whenever it changes
   useEffect(() => {
     if (username) {
@@ -176,35 +206,49 @@ export default function Dashboard() {
   }, [profile, username]);
 
   return (
-    <div className="flex h-screen bg-[var(--osrs-bg)] text-[var(--osrs-white)]">
-      <Sidebar
-        username={username}
-        setUsername={setUsername}
-        stats={stats}
-        gains={gains}
-        rareItems={rareItems}
-        collectionLog={collectionLog}
-        onLoadStats={loadStats}
-        onUpdateStats={updateStats}
-        onCollectionLogParsed={handleCollectionLogParsed}
-        isLoading={isLoading}
-        // New props for chat history
-        chatHistory={chats}
-        currentChatId={currentChatId}
-        onNewChat={handleNewChat}
-        onSelectChat={handleSelectChat}
-        onDeleteChat={handleDeleteChat}
-        isChatsLoading={isChatsLoading}
-        isSupabaseConfigured={isSupabaseConfigured}
-        profile={profile}
-      />
+    <div className="flex h-screen bg-[var(--osrs-bg)] text-[var(--osrs-white)] relative">
+      {/* Mobile backdrop */}
+      {isMobile && (
+        <div 
+          className={cn('sidebar-backdrop', isSidebarOpen && 'open')}
+          onClick={closeSidebar}
+        />
+      )}
+      
+      {/* Sidebar — drawer on mobile, static on desktop */}
+      <div className={cn('sidebar-drawer', (!isMobile || isSidebarOpen) && 'open')}>
+        <Sidebar
+          username={username}
+          setUsername={setUsername}
+          stats={stats}
+          gains={gains}
+          rareItems={rareItems}
+          collectionLog={collectionLog}
+          onLoadStats={loadStats}
+          onUpdateStats={updateStats}
+          onCollectionLogParsed={handleCollectionLogParsed}
+          isLoading={isLoading}
+          chatHistory={chats}
+          currentChatId={currentChatId}
+          onNewChat={handleNewChatMobile}
+          onSelectChat={handleSelectChatMobile}
+          onDeleteChat={handleDeleteChat}
+          isChatsLoading={isChatsLoading}
+          isSupabaseConfigured={isSupabaseConfigured}
+          profile={profile}
+          onClose={closeSidebar}
+          isMobile={isMobile}
+        />
+      </div>
+      
       <Chat 
         userContext={userContext} 
-        // New props for persistence
         chatId={currentChatId}
         onCreateChat={handleCreateChat}
         onUpdateChatTitle={handleUpdateChatTitle}
         profile={profile}
+        onToggleSidebar={toggleSidebar}
+        isMobile={isMobile}
       />
     </div>
   );
