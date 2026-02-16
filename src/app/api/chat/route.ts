@@ -4,7 +4,7 @@ import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
 import { searchWiki, getWikiPage, getWikiPageFull, getItemPrice, getMultipleItemPrices, getPlayerStats, formatPriceSummary, formatStatsSummary, formatGainsSummary, getPlayerGains, formatPrice } from '@/lib/osrs';
 import { searchWeb } from '@/lib/tavily';
-import { retrieveContext, formatContextForPrompt, isRAGConfigured, addDocument } from '@/lib/rag';
+import { retrieveContext, formatContextForPrompt, retrieveExpertTips, formatExpertTipsForPrompt, isRAGConfigured, addDocument } from '@/lib/rag';
 import { getSupabaseClient } from '@/lib/supabase';
 import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 import type { UserContext, CollectionLogItem } from '@/lib/types';
@@ -616,8 +616,10 @@ export async function POST(req: Request) {
 
     // Optional: RAG context retrieval
     let ragContext = '';
+    let expertContext = '';
     if (isRAGConfigured() && latestUserMessage) {
       try {
+        // Retrieve cached wiki documents
         const relevantDocs = await retrieveContext(latestUserMessage, {
           matchThreshold: 0.7,
           matchCount: 2,
@@ -626,15 +628,29 @@ export async function POST(req: Request) {
           ragContext = formatContextForPrompt(relevantDocs);
           debugLog(`RAG: Retrieved ${relevantDocs.length} cached documents`);
         }
+
+        // Retrieve community expert tips
+        const expertTips = await retrieveExpertTips(latestUserMessage, {
+          matchThreshold: 0.6,
+          matchCount: 3,
+        });
+        if (expertTips.length > 0) {
+          expertContext = formatExpertTipsForPrompt(expertTips);
+          debugLog(`Expert tips: Retrieved ${expertTips.length} community tips`);
+        }
       } catch (ragError) {
         console.error('RAG retrieval error:', ragError);
       }
     }
 
     const baseSystemPrompt = buildSystemPrompt(normalizeUserContext(userContext), profile);
-    const systemPrompt = ragContext
-      ? `${baseSystemPrompt}\n\n### CACHED KNOWLEDGE (from previous lookups):\n${ragContext}`
-      : baseSystemPrompt;
+    let systemPrompt = baseSystemPrompt;
+    if (ragContext) {
+      systemPrompt += `\n\n### CACHED KNOWLEDGE (from previous lookups):\n${ragContext}`;
+    }
+    if (expertContext) {
+      systemPrompt += `\n\n${expertContext}`;
+    }
 
     const modelId = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat';
 

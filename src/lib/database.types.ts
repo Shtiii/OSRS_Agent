@@ -163,6 +163,88 @@ export interface Database {
           updated_at?: string;
         };
       };
+      feedback: {
+        Row: {
+          id: string;
+          message_id: string;
+          chat_id: string | null;
+          user_id: string | null;
+          anonymous_id: string | null;
+          rating: number;
+          correction: string | null;
+          user_message: string | null;
+          assistant_message: string | null;
+          created_at: string;
+        };
+        Insert: {
+          id?: string;
+          message_id: string;
+          chat_id?: string | null;
+          user_id?: string | null;
+          anonymous_id?: string | null;
+          rating: number;
+          correction?: string | null;
+          user_message?: string | null;
+          assistant_message?: string | null;
+          created_at?: string;
+        };
+        Update: {
+          id?: string;
+          message_id?: string;
+          chat_id?: string | null;
+          user_id?: string | null;
+          anonymous_id?: string | null;
+          rating?: number;
+          correction?: string | null;
+          user_message?: string | null;
+          assistant_message?: string | null;
+          created_at?: string;
+        };
+      };
+      expert_tips: {
+        Row: {
+          id: string;
+          content: string;
+          category: string | null;
+          topic: string | null;
+          submitted_by: string | null;
+          submitted_by_name: string | null;
+          source_feedback_id: string | null;
+          status: 'pending' | 'approved' | 'rejected';
+          upvotes: number;
+          embedding: number[] | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          content: string;
+          category?: string | null;
+          topic?: string | null;
+          submitted_by?: string | null;
+          submitted_by_name?: string | null;
+          source_feedback_id?: string | null;
+          status?: 'pending' | 'approved' | 'rejected';
+          upvotes?: number;
+          embedding?: number[] | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          content?: string;
+          category?: string | null;
+          topic?: string | null;
+          submitted_by?: string | null;
+          submitted_by_name?: string | null;
+          source_feedback_id?: string | null;
+          status?: 'pending' | 'approved' | 'rejected';
+          upvotes?: number;
+          embedding?: number[] | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
     Views: {
       [_ in never]: never;
@@ -194,6 +276,22 @@ export interface Database {
           id: string;
           content: string;
           metadata: Json;
+        }[];
+      };
+      match_expert_tips: {
+        Args: {
+          query_embedding: number[];
+          match_threshold?: number;
+          match_count?: number;
+        };
+        Returns: {
+          id: string;
+          content: string;
+          category: string | null;
+          topic: string | null;
+          submitted_by_name: string | null;
+          upvotes: number;
+          similarity: number;
         }[];
       };
     };
@@ -239,3 +337,9 @@ export type ProfileUpdate = UpdateTables<'profiles'>;
 export type ChatUpdate = UpdateTables<'chats'>;
 export type MessageUpdate = UpdateTables<'messages'>;
 export type DocumentUpdate = UpdateTables<'documents'>;
+
+export type FeedbackRow = Tables<'feedback'>;
+export type ExpertTipRow = Tables<'expert_tips'>;
+
+export type FeedbackInsert = InsertTables<'feedback'>;
+export type ExpertTipInsert = InsertTables<'expert_tips'>;

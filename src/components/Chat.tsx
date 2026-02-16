@@ -15,6 +15,10 @@ import {
   Square,
   X,
   Menu,
+  ThumbsUp,
+  ThumbsDown,
+  MessageCircle,
+  Check,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMessages } from '@/hooks/useSupabase';
@@ -56,6 +60,12 @@ export default function Chat({
   const pendingAssistantMessageRef = useRef<string | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // Feedback state
+  const [feedbackGiven, setFeedbackGiven] = useState<Record<string, 'like' | 'dislike'>>({});
+  const [showCorrectionFor, setShowCorrectionFor] = useState<string | null>(null);
+  const [correctionText, setCorrectionText] = useState('');
+  const [feedbackSending, setFeedbackSending] = useState<string | null>(null);
 
   const { 
     messages: dbMessages, 
@@ -115,6 +125,45 @@ export default function Chat({
     abortControllerRef.current = null;
     setIsLoading(false);
   }, []);
+
+  const handleFeedback = useCallback(async (
+    messageId: string,
+    rating: 1 | -1,
+    correction?: string
+  ) => {
+    setFeedbackSending(messageId);
+    
+    // Find the assistant message and the preceding user message
+    const msgIndex = messages.findIndex(m => m.id === messageId);
+    const assistantMsg = messages[msgIndex];
+    const userMsg = msgIndex > 0 ? messages[msgIndex - 1] : null;
+
+    try {
+      await fetch('/api/feedback', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          messageId,
+          chatId,
+          rating,
+          correction: correction || undefined,
+          userMessage: userMsg?.role === 'user' ? userMsg.content : undefined,
+          assistantMessage: assistantMsg?.content || undefined,
+        }),
+      });
+
+      setFeedbackGiven(prev => ({ ...prev, [messageId]: rating === 1 ? 'like' : 'dislike' }));
+      
+      if (correction) {
+        setShowCorrectionFor(null);
+        setCorrectionText('');
+      }
+    } catch (err) {
+      console.error('Failed to submit feedback:', err);
+    } finally {
+      setFeedbackSending(null);
+    }
+  }, [messages, chatId]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -417,8 +466,107 @@ export default function Chat({
                       <div className="w-7 h-7 rounded-lg bg-[var(--osrs-yellow)]/10 border border-[var(--osrs-yellow)]/15 flex items-center justify-center flex-shrink-0 mt-1">
                         <Bot className="w-4 h-4 text-[var(--osrs-yellow)]" />
                       </div>
-                      <div className="msg-assistant px-4 py-3 flex-1">
-                        <MessageContent content={message.content} />
+                      <div className="flex-1">
+                        <div className="msg-assistant px-4 py-3">
+                          <MessageContent content={message.content} />
+                        </div>
+                        {/* Feedback buttons */}
+                        {message.content && !isLoading && (
+                          <div className="mt-1.5 ml-1">
+                            {feedbackGiven[message.id] ? (
+                              <div className="flex items-center gap-2">
+                                <span className={cn(
+                                  'text-xs flex items-center gap-1',
+                                  feedbackGiven[message.id] === 'like' ? 'text-[var(--osrs-green)]' : 'text-[var(--osrs-orange)]'
+                                )}>
+                                  {feedbackGiven[message.id] === 'like' ? (
+                                    <><ThumbsUp className="w-3 h-3" /> Helpful</>
+                                  ) : (
+                                    <><ThumbsDown className="w-3 h-3" /> Noted</>
+                                  )}
+                                </span>
+                                {feedbackGiven[message.id] === 'dislike' && !showCorrectionFor && (
+                                  <button
+                                    onClick={() => setShowCorrectionFor(message.id)}
+                                    className="text-xs text-gray-500 hover:text-[var(--osrs-cyan)] transition-colors flex items-center gap-1"
+                                  >
+                                    <MessageCircle className="w-3 h-3" />
+                                    Add correction
+                                  </button>
+                                )}
+                              </div>
+                            ) : (
+                              <div className="flex items-center gap-1">
+                                <button
+                                  onClick={() => handleFeedback(message.id, 1)}
+                                  disabled={feedbackSending === message.id}
+                                  className="p-1.5 text-gray-500 hover:text-[var(--osrs-green)] transition-colors rounded-md hover:bg-[var(--osrs-green)]/10"
+                                  title="Helpful"
+                                >
+                                  <ThumbsUp className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  onClick={() => {
+                                    handleFeedback(message.id, -1);
+                                  }}
+                                  disabled={feedbackSending === message.id}
+                                  className="p-1.5 text-gray-500 hover:text-[var(--osrs-orange)] transition-colors rounded-md hover:bg-[var(--osrs-orange)]/10"
+                                  title="Not helpful"
+                                >
+                                  <ThumbsDown className="w-3.5 h-3.5" />
+                                </button>
+                                {feedbackSending === message.id && (
+                                  <Loader2 className="w-3.5 h-3.5 animate-spin text-gray-500 ml-1" />
+                                )}
+                              </div>
+                            )}
+                            {/* Correction input */}
+                            {showCorrectionFor === message.id && (
+                              <div className="mt-2 animate-fade-in">
+                                <p className="text-xs text-gray-400 mb-1.5">
+                                  What was wrong? Your correction helps improve future answers.
+                                </p>
+                                <div className="flex gap-2">
+                                  <textarea
+                                    value={correctionText}
+                                    onChange={(e) => setCorrectionText(e.target.value)}
+                                    placeholder="e.g., The actual drop rate for Zulrah's mutagen is 1/13,106, not 1/6,553..."
+                                    className="osrs-input flex-1 text-xs resize-none"
+                                    rows={2}
+                                    style={{ maxHeight: '80px', minHeight: '44px' }}
+                                  />
+                                  <div className="flex flex-col gap-1">
+                                    <button
+                                      onClick={() => {
+                                        if (correctionText.trim()) {
+                                          handleFeedback(message.id, -1, correctionText.trim());
+                                        }
+                                      }}
+                                      disabled={!correctionText.trim() || feedbackSending === message.id}
+                                      className="osrs-button px-2 py-1 text-xs flex items-center gap-1"
+                                    >
+                                      {feedbackSending === message.id ? (
+                                        <Loader2 className="w-3 h-3 animate-spin" />
+                                      ) : (
+                                        <Check className="w-3 h-3" />
+                                      )}
+                                      Send
+                                    </button>
+                                    <button
+                                      onClick={() => {
+                                        setShowCorrectionFor(null);
+                                        setCorrectionText('');
+                                      }}
+                                      className="text-xs text-gray-500 hover:text-gray-300 transition-colors px-2"
+                                    >
+                                      Skip
+                                    </button>
+                                  </div>
+                                </div>
+                              </div>
+                            )}
+                          </div>
+                        )}
                       </div>
                     </div>
                   </div>

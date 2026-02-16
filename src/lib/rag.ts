@@ -22,6 +22,16 @@ export interface DocumentMatch {
   similarity: number;
 }
 
+export interface ExpertTipMatch {
+  id: string;
+  content: string;
+  category: string | null;
+  topic: string | null;
+  submitted_by_name: string | null;
+  upvotes: number;
+  similarity: number;
+}
+
 // ============================================
 // Configuration
 // ============================================
@@ -203,6 +213,77 @@ export async function addDocument(
     console.error('Error in addDocument:', error);
     return null;
   }
+}
+
+/**
+ * Retrieve relevant expert tips from the community knowledge base
+ */
+export async function retrieveExpertTips(
+  query: string,
+  options: {
+    matchThreshold?: number;
+    matchCount?: number;
+  } = {}
+): Promise<ExpertTipMatch[]> {
+  const {
+    matchThreshold = 0.6,
+    matchCount = 3,
+  } = options;
+
+  const embedding = await createEmbedding(query);
+  
+  if (!embedding) {
+    return [];
+  }
+
+  const supabase = getSupabaseClient();
+  if (!supabase) {
+    return [];
+  }
+
+  try {
+    const { data, error } = await (supabase as any).rpc('match_expert_tips', {
+      query_embedding: embedding,
+      match_threshold: matchThreshold,
+      match_count: matchCount,
+    });
+
+    if (error) {
+      console.error('Error matching expert tips:', error);
+      return [];
+    }
+
+    return (data as ExpertTipMatch[]) || [];
+  } catch (error) {
+    console.error('Error in retrieveExpertTips:', error);
+    return [];
+  }
+}
+
+/**
+ * Format expert tips into a context string for the AI
+ */
+export function formatExpertTipsForPrompt(tips: ExpertTipMatch[]): string {
+  if (tips.length === 0) {
+    return '';
+  }
+
+  const tipParts = tips.map((tip, index) => {
+    const meta = [
+      tip.category && `Category: ${tip.category}`,
+      tip.topic && `Topic: ${tip.topic}`,
+      tip.submitted_by_name && `Contributed by: ${tip.submitted_by_name}`,
+      tip.upvotes > 0 && `Upvotes: ${tip.upvotes}`,
+    ].filter(Boolean).join(' | ');
+
+    return `**Tip ${index + 1}**${meta ? ` (${meta})` : ''}:\n${tip.content}`;
+  });
+
+  return `### COMMUNITY EXPERT TIPS:
+The following expert corrections and tips were contributed by experienced players. Prioritize this knowledge when it's relevant:
+
+${tipParts.join('\n\n---\n\n')}
+`;
 }
 
 /**
