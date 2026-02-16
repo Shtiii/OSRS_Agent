@@ -1,7 +1,9 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { getSupabaseClient, getAnonymousId, isSupabaseConfigured, formatChatDate } from '@/lib/supabase';
+import { getSupabaseBrowserClient } from '@/lib/supabase-browser';
+import { getAnonymousId, isSupabaseConfigured, formatChatDate } from '@/lib/supabase';
+import { useAuth } from '@/components/AuthProvider';
 import type { ProfileRow } from '@/lib/database.types';
 
 // ============================================
@@ -38,12 +40,13 @@ interface MessageSelectResult {
 // ============================================
 
 export function useChats() {
+  const { user } = useAuth();
   const [chats, setChats] = useState<ChatHistoryItem[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const fetchChats = useCallback(async () => {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       // Guest mode - no persistence
       return;
@@ -99,7 +102,7 @@ export function useChats() {
   }, []);
 
   const createChat = useCallback(async (title: string, osrsUsername?: string): Promise<string | null> => {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       // Guest mode - return a local ID
       return `local_${Date.now()}`;
@@ -136,7 +139,7 @@ export function useChats() {
   }, [fetchChats]);
 
   const updateChatTitle = useCallback(async (chatId: string, title: string) => {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase || chatId.startsWith('local_')) {
       return;
     }
@@ -158,7 +161,7 @@ export function useChats() {
   }, []);
 
   const deleteChat = useCallback(async (chatId: string) => {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase || chatId.startsWith('local_')) {
       return;
     }
@@ -171,12 +174,12 @@ export function useChats() {
     }
   }, []);
 
-  // Fetch chats on mount
+  // Fetch chats on mount and when auth state changes
   useEffect(() => {
     if (isSupabaseConfigured()) {
       fetchChats();
     }
-  }, [fetchChats]);
+  }, [fetchChats, user?.id]);
 
   return {
     chats,
@@ -204,7 +207,7 @@ export function useMessages(chatId: string | null) {
       return;
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       return;
     }
@@ -249,7 +252,7 @@ export function useMessages(chatId: string | null) {
       return `local_msg_${Date.now()}`;
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       return `local_msg_${Date.now()}`;
     }
@@ -287,7 +290,7 @@ export function useMessages(chatId: string | null) {
       return `local_msg_${Date.now()}`;
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       return `local_msg_${Date.now()}`;
     }
@@ -320,7 +323,7 @@ export function useMessages(chatId: string | null) {
       return;
     }
 
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       return;
     }
@@ -360,11 +363,12 @@ export function useMessages(chatId: string | null) {
 // ============================================
 
 export function useProfile() {
+  const { user } = useAuth();
   const [profile, setProfile] = useState<ProfileRow | null>(null);
   const [isLoading, setIsLoading] = useState(false);
 
   const fetchProfile = useCallback(async () => {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       return;
     }
@@ -399,7 +403,7 @@ export function useProfile() {
   }, []);
 
   const upsertProfile = useCallback(async (updates: Partial<ProfileRow>) => {
-    const supabase = getSupabaseClient();
+    const supabase = getSupabaseBrowserClient();
     if (!supabase) {
       return;
     }
@@ -510,7 +514,7 @@ export function useGuestMode() {
 
   useEffect(() => {
     const checkAuth = async () => {
-      const supabase = getSupabaseClient();
+      const supabase = getSupabaseBrowserClient();
       if (!supabase) {
         setIsGuest(true);
         return;

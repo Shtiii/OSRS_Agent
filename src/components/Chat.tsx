@@ -12,6 +12,8 @@ import {
   Skull,
   Scroll,
   User,
+  Square,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useMessages } from '@/hooks/useSupabase';
@@ -47,6 +49,8 @@ export default function Chat({
   const [isFirstMessage, setIsFirstMessage] = useState(true);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const pendingAssistantMessageRef = useRef<string | null>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   const { 
     messages: dbMessages, 
@@ -60,6 +64,13 @@ export default function Chat({
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
+
+  const autoResize = useCallback(() => {
+    const el = textareaRef.current;
+    if (!el) return;
+    el.style.height = 'auto';
+    el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
+  }, []);
 
   useEffect(() => {
     scrollToBottom();
@@ -94,6 +105,12 @@ export default function Chat({
     }
   }, [saveMessageToChat]);
 
+  const handleStop = useCallback(() => {
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
+  }, []);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!input.trim() || isLoading) return;
@@ -107,6 +124,9 @@ export default function Chat({
 
     setMessages((prev) => [...prev, userMessage]);
     setInput('');
+    if (textareaRef.current) {
+      textareaRef.current.style.height = 'auto';
+    }
     setIsLoading(true);
     setError(null);
 
@@ -135,9 +155,13 @@ export default function Chat({
           content: m.content.trim(),
         }));
 
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       const response = await fetch('/api/chat', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        signal: controller.signal,
         body: JSON.stringify({
           messages: messagesToSend,
           userContext,
@@ -214,10 +238,15 @@ export default function Chat({
 
       pendingAssistantMessageRef.current = null;
     } catch (err) {
-      setError(err instanceof Error ? err : new Error('Unknown error'));
+      if (err instanceof Error && err.name === 'AbortError') {
+        // User cancelled — not an error
+      } else {
+        setError(err instanceof Error ? err : new Error('Unknown error'));
+      }
       pendingAssistantMessageRef.current = null;
     } finally {
       setIsLoading(false);
+      abortControllerRef.current = null;
     }
   };
 
@@ -405,7 +434,13 @@ export default function Chat({
         {error && (
           <div className="flex items-center gap-3 p-4 bg-[var(--osrs-red)]/10 border border-[var(--osrs-red)]/30 rounded-xl text-red-300 max-w-3xl mx-auto mt-4">
             <AlertCircle className="w-5 h-5 flex-shrink-0" />
-            <p className="text-sm">Something went wrong. Please try again.</p>
+            <p className="text-sm flex-1">{error.message || 'Something went wrong. Please try again.'}</p>
+            <button
+              onClick={() => setError(null)}
+              className="text-red-400 hover:text-red-200 transition-colors flex-shrink-0"
+            >
+              <X className="w-4 h-4" />
+            </button>
           </div>
         )}
       </div>
@@ -413,31 +448,53 @@ export default function Chat({
       {/* Input Area */}
       <div className="px-4 md:px-6 py-4 border-t border-[var(--osrs-border)] bg-[var(--osrs-panel-dark)]">
         <form onSubmit={handleSubmit} className="max-w-3xl mx-auto">
-          <div className="flex gap-2.5">
+          <div className="flex gap-2.5 items-end">
             <div className="flex-1 relative">
-              <input
-                type="text"
+              <textarea
+                ref={textareaRef}
                 value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask about bosses, quests, money making..."
-                className="osrs-input w-full py-3 px-4 pr-4 text-sm"
+                onChange={(e) => {
+                  setInput(e.target.value);
+                  autoResize();
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    if (input.trim() && !isLoading) {
+                      handleSubmit(e as unknown as React.FormEvent);
+                    }
+                  }
+                }}
+                placeholder="Ask about bosses, quests, money making... (Shift+Enter for new line)"
+                className="osrs-input w-full text-sm resize-none overflow-y-auto"
+                style={{ maxHeight: '200px' }}
+                rows={1}
                 disabled={isLoading}
               />
             </div>
-            <button
-              type="submit"
-              disabled={isLoading || !input.trim()}
-              className={cn(
-                'osrs-button px-4 py-3 flex items-center justify-center',
-                input.trim() && !isLoading && 'osrs-button-primary'
-              )}
-            >
-              {isLoading ? (
-                <Loader2 className="w-5 h-5 animate-spin" />
-              ) : (
+            {isLoading ? (
+              <button
+                type="button"
+                onClick={handleStop}
+                className="osrs-button flex-shrink-0 flex items-center justify-center text-red-400 border-red-500/30 hover:bg-red-500/10"
+                style={{ padding: '0.625rem', alignSelf: 'flex-end' }}
+                title="Stop generating"
+              >
+                <Square className="w-5 h-5" />
+              </button>
+            ) : (
+              <button
+                type="submit"
+                disabled={!input.trim()}
+                className={cn(
+                  'osrs-button flex-shrink-0 flex items-center justify-center',
+                  input.trim() && 'osrs-button-primary'
+                )}
+                style={{ padding: '0.625rem', alignSelf: 'flex-end' }}
+              >
                 <Send className="w-5 h-5" />
-              )}
-            </button>
+              </button>
+            )}
           </div>
           <p className="text-[0.65rem] text-gray-500 mt-2 text-center">
             AI responses may not always be accurate. Verify on the <a href="https://oldschool.runescape.wiki" target="_blank" rel="noopener noreferrer" className="text-[var(--osrs-cyan)] hover:underline">OSRS Wiki</a>.

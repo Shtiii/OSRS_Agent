@@ -373,7 +373,7 @@ You have access to the **ENTIRE OSRS Wiki** and **real-time GE prices** via tool
 - **getItemPrice** - Get live Grand Exchange price for a single item.
 - **comparePrices** - Compare prices for multiple items at once (e.g., gear comparisons). Much faster than calling getItemPrice repeatedly — use this when comparing 2+ items.
 - **checkRequirements** - Check if the user meets requirements for a quest, boss, diary, or activity. Fetches requirements from the Wiki and compares against the user's stats. Use when users ask "can I do X?" or "what do I need for X?".
-- **searchWeb** - Search the web for community content (Reddit, YouTube). Use for meta strategies, current opinions, or recent game updates.
+- **searchWeb** - Search the web for OSRS information beyond the Wiki. **Use as a fallback** when Wiki searches don't find what you need. Also great for community strategies, Reddit discussions, YouTube guides, and recent game updates/patch notes.
 - **lookupPlayer** - Look up any OSRS player's stats and recent gains from Wise Old Man. Use when the user asks about another player.
 
 ### WHEN TO USE TOOLS:
@@ -385,12 +385,20 @@ You have access to the **ENTIRE OSRS Wiki** and **real-time GE prices** via tool
 - Skilling XP rates, methods, efficiency → searchWiki + getWikiPage
 - Slayer tasks, masters, weights → getWikiPage
 - Community meta, opinions, recent updates → searchWeb
+- Wiki returned no results or insufficient info → **searchWeb as fallback**
+- Recent patch notes, hotfixes, current meta → searchWeb
 - Another player's stats → lookupPlayer
 
 ### WHEN NOT TO USE TOOLS:
 - Simple greetings ("Hi!", "Thanks!")
 - Pure opinion questions ("What do you think of...")
 - Things you can answer from the user's provided stats below
+
+### FALLBACK STRATEGY (MANDATORY):
+1. If searchWiki or getWikiPage return no results or unhelpful content, you **MUST call searchWeb** before telling the user you couldn't find information.
+2. If the user explicitly asks you to check other sources, search online, or look beyond the Wiki, you **MUST use searchWeb** — do NOT only use Wiki tools.
+3. For questions about current meta, best strategies, community opinions, or recent updates, **use searchWeb in addition to Wiki**, not instead of it.
+4. Never give up after just a Wiki miss — the web has Reddit discussions, YouTube guides, and community resources the Wiki may lack.
 
 ### TRANSPARENCY & CITATIONS:
 - When you look something up, briefly say: "Let me check the Wiki..." or "Looking up prices..."
@@ -772,9 +780,9 @@ export async function POST(req: Request) {
         }),
 
         searchWeb: tool({
-          description: 'Search the web for OSRS community content (Reddit, YouTube guides). Use for meta strategies or opinions.',
+          description: 'Search the web for OSRS information. Use as a FALLBACK when Wiki search returns no useful results. Also use proactively for: community strategies, Reddit threads, YouTube guides, recent game updates, patch notes, current meta, and any time the user asks you to check sources beyond the Wiki.',
           inputSchema: z.object({
-            query: z.string().describe('Web search query (e.g., "best slayer block list 2024", "vorkath beginner guide")'),
+            query: z.string().describe('Web search query (e.g., "best slayer block list 2025", "vorkath beginner guide", "osrs latest update")'),
           }),
           execute: async ({ query }) => {
             debugLog(`[Tool] searchWeb: "${query}"`);
