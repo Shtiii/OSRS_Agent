@@ -4,6 +4,7 @@
  */
 
 import { getSupabaseClient } from './supabase';
+import type { Json } from './database.types';
 
 // ============================================
 // Types
@@ -19,14 +20,6 @@ export interface DocumentMatch {
     [key: string]: unknown;
   };
   similarity: number;
-}
-
-export interface EmbeddingResult {
-  embedding: number[];
-  usage: {
-    prompt_tokens: number;
-    total_tokens: number;
-  };
 }
 
 // ============================================
@@ -117,7 +110,7 @@ export async function retrieveContext(
 
   try {
     // Call the match_documents function
-    const { data, error } = await (supabase as any).rpc('match_documents', {
+    const { data, error } = await supabase.rpc('match_documents', {
       query_embedding: embedding,
       match_threshold: matchThreshold,
       match_count: matchCount,
@@ -190,11 +183,11 @@ export async function addDocument(
   }
 
   try {
-    const { data, error } = await (supabase as any)
+    const { data, error } = await supabase
       .from('documents')
       .insert({
         content,
-        metadata,
+        metadata: metadata as Json,
         embedding,
       })
       .select('id')
@@ -213,52 +206,8 @@ export async function addDocument(
 }
 
 /**
- * Add multiple documents in batch
- */
-export async function addDocuments(
-  documents: Array<{ content: string; metadata?: Record<string, unknown> }>
-): Promise<number> {
-  let successCount = 0;
-
-  for (const doc of documents) {
-    const id = await addDocument(doc.content, doc.metadata || {});
-    if (id) {
-      successCount++;
-    }
-  }
-
-  return successCount;
-}
-
-/**
  * Check if RAG is configured and available
  */
 export function isRAGConfigured(): boolean {
   return !!process.env.OPENAI_API_KEY && !!process.env.NEXT_PUBLIC_SUPABASE_URL;
-}
-
-/**
- * Get stats about the document store
- */
-export async function getDocumentStats(): Promise<{ count: number } | null> {
-  const supabase = getSupabaseClient();
-  if (!supabase) {
-    return null;
-  }
-
-  try {
-    const { count, error } = await (supabase as any)
-      .from('documents')
-      .select('*', { count: 'exact', head: true });
-
-    if (error) {
-      console.error('Error getting document stats:', error);
-      return null;
-    }
-
-    return { count: count || 0 };
-  } catch (error) {
-    console.error('Error in getDocumentStats:', error);
-    return null;
-  }
 }

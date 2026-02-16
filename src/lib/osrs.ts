@@ -10,6 +10,23 @@ const WIKI_BASE_URL = 'https://oldschool.runescape.wiki/api.php';
 const PRICES_BASE_URL = 'https://prices.runescape.wiki/api/v1/osrs';
 
 // ============================================
+// Rate Limiter for Wiki API calls
+// ============================================
+
+// Simple rate limiter for Wiki API calls
+const RATE_LIMIT_DELAY = 200; // ms between wiki requests (5/sec max)
+let lastWikiRequest = 0;
+async function rateLimitedFetch(url: string, options?: RequestInit): Promise<Response> {
+  const now = Date.now();
+  const timeSinceLastRequest = now - lastWikiRequest;
+  if (timeSinceLastRequest < RATE_LIMIT_DELAY) {
+    await new Promise(resolve => setTimeout(resolve, RATE_LIMIT_DELAY - timeSinceLastRequest));
+  }
+  lastWikiRequest = Date.now();
+  return fetch(url, options);
+}
+
+// ============================================
 // Types for Real-Time Prices
 // ============================================
 
@@ -34,6 +51,56 @@ interface WikiItemIdResponse {
 let itemMappingCache: Record<string, number> | null = null;
 let mappingCacheTime = 0;
 const MAPPING_CACHE_TTL = 3600000; // 1 hour
+
+// ============================================
+// Price data caches
+// ============================================
+
+let latestPriceCache: Record<string, any> | null = null;
+let latestPriceCacheTime = 0;
+const PRICE_CACHE_TTL = 60000; // 60 seconds
+
+let volumeCache: Record<string, any> | null = null;
+let volumeCacheTime = 0;
+const VOLUME_CACHE_TTL = 120000; // 2 minutes
+
+async function getLatestPrices(): Promise<Record<string, any>> {
+  if (latestPriceCache && Date.now() - latestPriceCacheTime < PRICE_CACHE_TTL) {
+    return latestPriceCache;
+  }
+  try {
+    const response = await fetch(`${PRICES_BASE_URL}/latest`, {
+      headers: { 'User-Agent': 'OSRS-Agent-Dashboard/1.0' },
+    });
+    if (!response.ok) throw new Error(`Prices API error: ${response.status}`);
+    const data = await response.json();
+    latestPriceCache = data.data || {};
+    latestPriceCacheTime = Date.now();
+    return latestPriceCache!;
+  } catch (error) {
+    console.error('Error fetching latest prices:', error);
+    return latestPriceCache ?? {};
+  }
+}
+
+async function getVolumeData(): Promise<Record<string, any>> {
+  if (volumeCache && Date.now() - volumeCacheTime < VOLUME_CACHE_TTL) {
+    return volumeCache;
+  }
+  try {
+    const response = await fetch(`${PRICES_BASE_URL}/1h`, {
+      headers: { 'User-Agent': 'OSRS-Agent-Dashboard/1.0' },
+    });
+    if (!response.ok) throw new Error(`Volume API error: ${response.status}`);
+    const data = await response.json();
+    volumeCache = data.data || {};
+    volumeCacheTime = Date.now();
+    return volumeCache!;
+  } catch (error) {
+    console.error('Error fetching volume data:', error);
+    return volumeCache ?? {};
+  }
+}
 
 /**
  * Fetch player details from Wise Old Man API
@@ -156,7 +223,7 @@ export async function searchWiki(query: string): Promise<WikiSearchResult[]> {
       origin: '*',
     });
 
-    const response = await fetch(`${WIKI_BASE_URL}?${params}`, {
+    const response = await rateLimitedFetch(`${WIKI_BASE_URL}?${params}`, {
       headers: {
         'User-Agent': 'OSRS-Agent-Dashboard/1.0',
       },
@@ -191,7 +258,7 @@ export async function getWikiPage(title: string): Promise<WikiPageContent | null
       origin: '*',
     });
 
-    const response = await fetch(`${WIKI_BASE_URL}?${params}`, {
+    const response = await rateLimitedFetch(`${WIKI_BASE_URL}?${params}`, {
       headers: {
         'User-Agent': 'OSRS-Agent-Dashboard/1.0',
       },
@@ -224,23 +291,20 @@ export async function getWikiPage(title: string): Promise<WikiPageContent | null
 }
 
 /**
- * Get full page content with sections
+ * Get full page content with sections (uses action=parse for complete wikitext)
  */
 export async function getWikiPageFull(title: string): Promise<string | null> {
   try {
     const params = new URLSearchParams({
-      action: 'query',
-      titles: title,
-      prop: 'extracts',
-      explaintext: 'true',
+      action: 'parse',
+      page: title,
+      prop: 'wikitext',
       format: 'json',
       origin: '*',
     });
 
-    const response = await fetch(`${WIKI_BASE_URL}?${params}`, {
-      headers: {
-        'User-Agent': 'OSRS-Agent-Dashboard/1.0',
-      },
+    const response = await rateLimitedFetch(`${WIKI_BASE_URL}?${params}`, {
+      headers: { 'User-Agent': 'OSRS-Agent-Dashboard/1.0' },
     });
 
     if (!response.ok) {
@@ -248,18 +312,96 @@ export async function getWikiPageFull(title: string): Promise<string | null> {
     }
 
     const data = await response.json();
-    const pages = data.query?.pages;
-    
-    if (!pages) return null;
-    
-    const pageId = Object.keys(pages)[0];
-    if (pageId === '-1') return null;
-    
-    return pages[pageId].extract || null;
+    const wikitext = data.parse?.wikitext?.['*'];
+    if (!wikitext) return null;
+
+    // Clean wikitext: remove templates, keep readable content
+    return cleanWikitext(wikitext);
   } catch (error) {
-    console.error('Error fetching wiki page:', error);
+    console.error('Error fetching full wiki page:', error);
     return null;
   }
+}
+
+/**
+ * Clean MediaWiki markup into readable plain text for the LLM
+ */
+function cleanWikitext(wikitext: string): string {
+  let text = wikitext;
+  
+  // Remove HTML comments
+  text = text.replace(/<!--[\s\S]*?-->/g, '');
+  
+  // Remove categories
+  text = text.replace(/\[\[Category:[^\]]*\]\]/gi, '');
+  
+  // Remove file/image references but keep alt text
+  text = text.replace(/\[\[File:[^\]]*\]\]/gi, '');
+  text = text.replace(/\[\[Image:[^\]]*\]\]/gi, '');
+  
+  // Convert wiki links [[Page|display]] -> display, [[Page]] -> Page
+  text = text.replace(/\[\[([^\]|]*)\|([^\]]*)\]\]/g, '$2');
+  text = text.replace(/\[\[([^\]]*)\]\]/g, '$1');
+  
+  // Remove external link markup [url text] -> text
+  text = text.replace(/\[https?:\/\/[^\s\]]*\s*([^\]]*)\]/g, '$1');
+  
+  // Remove common templates but preserve some useful ones
+  // Keep {{Coins}} style templates as plain text
+  text = text.replace(/\{\{[Cc]oins\|([^}]*)\}\}/g, '$1 coins');
+  text = text.replace(/\{\{[Ss]kill\|([^}|]*)[^}]*\}\}/g, '$1');
+  
+  // Remove infobox templates (multi-line)
+  text = text.replace(/\{\{[Ii]nfobox[\s\S]*?\}\}\s*/g, '');
+  
+  // Remove remaining single-line templates like {{clear}}, {{stub}}, etc.
+  text = text.replace(/\{\{[^{}]*\}\}/g, '');
+  
+  // Remove nested templates (up to 2 deep)
+  text = text.replace(/\{\{[^{}]*\{\{[^{}]*\}\}[^{}]*\}\}/g, '');
+  text = text.replace(/\{\{[^{}]*\}\}/g, '');
+  
+  // Convert headers
+  text = text.replace(/={5}\s*([^=]+)\s*={5}/g, '##### $1');
+  text = text.replace(/={4}\s*([^=]+)\s*={4}/g, '#### $1');
+  text = text.replace(/={3}\s*([^=]+)\s*={3}/g, '### $1');
+  text = text.replace(/={2}\s*([^=]+)\s*={2}/g, '## $1');
+  
+  // Convert bold/italic
+  text = text.replace(/'{3}([^']+)'{3}/g, '**$1**');
+  text = text.replace(/'{2}([^']+)'{2}/g, '*$1*');
+  
+  // Convert bullet lists
+  text = text.replace(/^\*\*\*\*/gm, '        -');
+  text = text.replace(/^\*\*\*/gm, '      -');
+  text = text.replace(/^\*\*/gm, '    -');
+  text = text.replace(/^\*/gm, '-');
+  
+  // Convert numbered lists
+  text = text.replace(/^#{4}/gm, '        1.');
+  text = text.replace(/^#{3}/gm, '      1.');
+  text = text.replace(/^#{2}/gm, '    1.');
+  text = text.replace(/^#/gm, '1.');
+  
+  // Clean up table markup — convert to simple text
+  text = text.replace(/\{\|[^\n]*\n/g, '');  // table open
+  text = text.replace(/\|\}/g, '');           // table close
+  text = text.replace(/^\|-.*$/gm, '');       // row separators
+  text = text.replace(/^!\s*/gm, '');         // header cells
+  text = text.replace(/^\|\s*/gm, '');        // data cells
+  
+  // Remove HTML tags
+  text = text.replace(/<ref[^>]*>[\s\S]*?<\/ref>/gi, '');
+  text = text.replace(/<ref[^/]*\/>/gi, '');
+  text = text.replace(/<br\s*\/?>/gi, '\n');
+  text = text.replace(/<\/?[^>]+>/g, '');
+  
+  // Clean up excessive whitespace
+  text = text.replace(/\n{4,}/g, '\n\n\n');
+  text = text.replace(/[ \t]+$/gm, '');
+  text = text.trim();
+  
+  return text;
 }
 
 /**
@@ -273,7 +415,7 @@ export function formatStatsSummary(player: WOMPlayerDetails): string {
   const skills = player.latestSnapshot.data.skills;
   const importantSkills = [
     'attack', 'strength', 'defence', 'hitpoints', 'ranged', 'prayer', 'magic',
-    'slayer', 'farming', 'herblore', 'construction', 'hunter'
+    'slayer', 'farming', 'herblore', 'construction', 'hunter', 'sailing'
   ];
 
   // FIX: Directly grab the 'overall' level from the API logic.
@@ -289,8 +431,7 @@ export function formatStatsSummary(player: WOMPlayerDetails): string {
   ];
 
   for (const skillName of importantSkills) {
-    // @ts-ignore - access dynamic property
-    const skill = skills[skillName];
+    const skill = skills[skillName as keyof typeof skills];
     if (skill) {
       lines.push(`- ${skillName.charAt(0).toUpperCase() + skillName.slice(1)}: ${skill.level}`);
     }
@@ -369,13 +510,14 @@ async function getItemMapping(): Promise<Record<string, number>> {
 }
 
 /**
- * Get item ID from item name (searches mapping first, then Wiki if needed)
+ * Get item ID from item name using the Prices API mapping only (no Wiki fallback).
+ * Uses progressively fuzzier matching strategies.
  */
 async function getItemId(itemName: string): Promise<WikiItemIdResponse> {
   const mapping = await getItemMapping();
   const normalizedName = itemName.toLowerCase().trim();
   
-  // Direct lookup
+  // 1. Direct exact lookup
   if (mapping[normalizedName]) {
     return {
       itemId: mapping[normalizedName],
@@ -383,28 +525,49 @@ async function getItemId(itemName: string): Promise<WikiItemIdResponse> {
     };
   }
 
-  // Try to find a partial match
-  const matchedName = Object.keys(mapping).find(name => 
-    name.includes(normalizedName) || normalizedName.includes(name)
-  );
-  
-  if (matchedName) {
-    return {
-      itemId: mapping[matchedName],
-      itemName: matchedName,
-    };
+  const allNames = Object.keys(mapping);
+
+  // 2. Exact match (redundant safety check)
+  let match = allNames.find(name => name === normalizedName);
+  if (match) {
+    return { itemId: mapping[match], itemName: match };
   }
 
-  // Search Wiki for the item to get the correct name
-  const searchResults = await searchWiki(itemName);
-  if (searchResults.length > 0) {
-    const wikiTitle = searchResults[0].title.toLowerCase();
-    if (mapping[wikiTitle]) {
-      return {
-        itemId: mapping[wikiTitle],
-        itemName: searchResults[0].title,
-      };
+  // 3. Query is a full substring of a mapping name (e.g. "whip" -> "abyssal whip")
+  match = allNames.find(name => name.includes(normalizedName));
+  if (match) {
+    return { itemId: mapping[match], itemName: match };
+  }
+
+  // 4. Mapping name is a full substring of the query (e.g. "abyssal whip osrs" -> "abyssal whip")
+  match = allNames.find(name => normalizedName.includes(name));
+  if (match) {
+    return { itemId: mapping[match], itemName: match };
+  }
+
+  // 5. Word-token matching: all words in the query appear in the mapping name
+  const queryWords = normalizedName.split(/\s+/).filter(w => w.length > 1);
+  if (queryWords.length > 0) {
+    match = allNames.find(name => queryWords.every(word => name.includes(word)));
+    if (match) {
+      return { itemId: mapping[match], itemName: match };
     }
+  }
+
+  // 6. Partial word overlap scoring (best match with most overlapping words)
+  let bestMatch: string | null = null;
+  let bestScore = 0;
+  for (const name of allNames) {
+    const nameWords = name.split(/\s+/);
+    const overlap = queryWords.filter(w => nameWords.some(nw => nw.includes(w) || w.includes(nw))).length;
+    const score = overlap / Math.max(queryWords.length, nameWords.length);
+    if (score > bestScore && score >= 0.5) {
+      bestScore = score;
+      bestMatch = name;
+    }
+  }
+  if (bestMatch) {
+    return { itemId: mapping[bestMatch], itemName: bestMatch };
   }
 
   return {
@@ -427,41 +590,22 @@ export async function getItemPrice(itemName: string): Promise<ItemPriceData | nu
       return null;
     }
 
-    // Fetch latest prices
-    const response = await fetch(`${PRICES_BASE_URL}/latest`, {
-      headers: {
-        'User-Agent': 'OSRS-Agent-Dashboard/1.0',
-      },
-    });
-
-    if (!response.ok) {
-      throw new Error(`Prices API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    const priceData = data.data?.[itemId];
+    // Fetch latest prices (cached)
+    const prices = await getLatestPrices();
+    const priceData = prices[itemId];
 
     if (!priceData) {
       console.error(`No price data for item ID: ${itemId}`);
       return null;
     }
 
-    // Also get volume data from 1h endpoint
+    // Also get volume data from 1h endpoint (cached)
     let volume: number | null = null;
-    try {
-      const volumeResponse = await fetch(`${PRICES_BASE_URL}/1h`, {
-        headers: {
-          'User-Agent': 'OSRS-Agent-Dashboard/1.0',
-        },
-      });
-      if (volumeResponse.ok) {
-        const volumeData = await volumeResponse.json();
-        const itemVolumeData = volumeData.data?.[itemId];
-        if (itemVolumeData) {
-          volume = (itemVolumeData.highPriceVolume || 0) + (itemVolumeData.lowPriceVolume || 0);
-        }
-      }
-    } catch {}
+    const volumes = await getVolumeData();
+    const itemVolumeData = volumes[itemId];
+    if (itemVolumeData) {
+      volume = (itemVolumeData.highPriceVolume || 0) + (itemVolumeData.lowPriceVolume || 0);
+    }
 
     // Calculate average price
     const avgPrice = priceData.high && priceData.low 
@@ -489,13 +633,16 @@ export async function getItemPrice(itemName: string): Promise<ItemPriceData | nu
  * Get prices for multiple items at once
  */
 export async function getMultipleItemPrices(itemNames: string[]): Promise<Record<string, ItemPriceData | null>> {
-  const results: Record<string, ItemPriceData | null> = {};
+  // Pre-fetch shared data once
+  await getLatestPrices();
+  await getVolumeData();
   
-  for (const name of itemNames) {
-    results[name] = await getItemPrice(name);
-  }
+  // Now resolve all items in parallel (only mapping lookups)
+  const entries = await Promise.all(
+    itemNames.map(async (name) => [name, await getItemPrice(name)] as const)
+  );
   
-  return results;
+  return Object.fromEntries(entries);
 }
 
 /**

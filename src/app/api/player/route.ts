@@ -1,13 +1,23 @@
 import { NextResponse } from 'next/server';
 import { getPlayerStats, updatePlayerStats, getPlayerGains } from '@/lib/osrs';
 
+// RSN: 1-12 characters, alphanumeric + spaces + hyphens + underscores
+const RSN_REGEX = /^[a-zA-Z0-9 _-]{1,12}$/;
+
+function validateUsername(username: string | null): string | null {
+  if (!username) return null;
+  const trimmed = username.trim();
+  if (!RSN_REGEX.test(trimmed)) return null;
+  return trimmed;
+}
+
 export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
-  const username = searchParams.get('username');
+  const username = validateUsername(searchParams.get('username'));
 
   if (!username) {
     return NextResponse.json(
-      { error: 'Username is required' },
+      { error: 'Invalid or missing username. RSN must be 1-12 characters (letters, numbers, spaces, hyphens).' },
       { status: 400 }
     );
   }
@@ -36,11 +46,21 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const { username } = await req.json();
+  let body: { username?: string };
+  try {
+    body = await req.json();
+  } catch {
+    return NextResponse.json(
+      { error: 'Invalid JSON in request body' },
+      { status: 400 }
+    );
+  }
+
+  const username = validateUsername(body.username ?? null);
 
   if (!username) {
     return NextResponse.json(
-      { error: 'Username is required' },
+      { error: 'Invalid or missing username. RSN must be 1-12 characters (letters, numbers, spaces, hyphens).' },
       { status: 400 }
     );
   }

@@ -88,15 +88,23 @@ CREATE POLICY "Documents are publicly readable" ON documents
   FOR SELECT
   USING (true);
 
--- 8. Only allow service role to insert/update/delete documents
+-- 8. Allow all roles to insert/update documents (public Wiki content cache)
+-- The server-side API caches Wiki pages using the anon key.
 DROP POLICY IF EXISTS "Only service role can modify documents" ON documents;
-CREATE POLICY "Only service role can modify documents" ON documents
-  FOR ALL
-  USING (auth.role() = 'service_role');
+DROP POLICY IF EXISTS "Anon can insert documents" ON documents;
+CREATE POLICY "Anon can insert documents" ON documents
+  FOR INSERT
+  WITH CHECK (true);
+
+DROP POLICY IF EXISTS "Anon can update documents" ON documents;
+CREATE POLICY "Anon can update documents" ON documents
+  FOR UPDATE
+  USING (true)
+  WITH CHECK (true);
 
 -- 9. Grant necessary permissions
-GRANT SELECT ON documents TO anon;
-GRANT SELECT ON documents TO authenticated;
+GRANT SELECT, INSERT, UPDATE ON documents TO anon;
+GRANT SELECT, INSERT, UPDATE ON documents TO authenticated;
 GRANT ALL ON documents TO service_role;
 
 -- 10. Create an update trigger for updated_at

@@ -164,7 +164,7 @@ export default function Dashboard() {
   }, [profile, username]);
 
   return (
-    <div className="flex h-screen bg-gray-950 text-white">
+    <div className="flex h-screen bg-[var(--osrs-bg)] text-[var(--osrs-white)]">
       <Sidebar
         username={username}
         setUsername={setUsername}

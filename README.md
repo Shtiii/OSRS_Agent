@@ -1,6 +1,6 @@
 # OSRS Helper Agent
 
-A Context-Aware OSRS (Old School RuneScape) AI Agent Dashboard built with Next.js 14+, TypeScript, and the Vercel AI SDK.
+A Context-Aware OSRS (Old School RuneScape) AI Agent Dashboard built with Next.js 16, TypeScript, and the Vercel AI SDK v6.
 
 ![OSRS Helper](https://oldschool.runescape.wiki/images/thumb/Old_School_RuneScape_logo.png/320px-Old_School_RuneScape_logo.png)
 
@@ -200,7 +200,7 @@ osrs-agent/
 
 ## Tech Stack
 
-- **Framework**: Next.js 14+ (App Router)
+- **Framework**: Next.js 16 (App Router)
 - **Language**: TypeScript
 - **Styling**: Tailwind CSS
 - **Icons**: Lucide React

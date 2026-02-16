@@ -39,32 +39,6 @@ export function getSupabaseClient(): SupabaseClient<Database> | null {
   return browserClient;
 }
 
-// Alias for compatibility
-export function createSupabaseClient() {
-  return getSupabaseClient();
-}
-
-// ============================================
-// Admin Client (for server-side operations without RLS)
-// Use sparingly - only for admin operations
-// ============================================
-
-export function createAdminClient(): SupabaseClient<Database> | null {
-  const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
-
-  if (!supabaseUrl || !serviceRoleKey) {
-    console.warn('Supabase admin client not configured');
-    return null;
-  }
-
-  return createClient<Database>(supabaseUrl, serviceRoleKey, {
-    auth: {
-      autoRefreshToken: false,
-      persistSession: false,
-    },
-  });
-}
-
 // ============================================
 // Anonymous ID Management (for Guest Mode)
 // ============================================
@@ -82,51 +56,6 @@ export function getAnonymousId(): string {
     localStorage.setItem(ANON_ID_KEY, anonId);
   }
   return anonId;
-}
-
-export function clearAnonymousId(): void {
-  if (typeof window !== 'undefined') {
-    localStorage.removeItem(ANON_ID_KEY);
-  }
-}
-
-// ============================================
-// Type-safe Database Types
-// ============================================
-
-export type Profile = Database['public']['Tables']['profiles']['Row'];
-export type ProfileInsert = Database['public']['Tables']['profiles']['Insert'];
-export type ProfileUpdate = Database['public']['Tables']['profiles']['Update'];
-
-export type Chat = Database['public']['Tables']['chats']['Row'];
-export type ChatInsert = Database['public']['Tables']['chats']['Insert'];
-export type ChatUpdate = Database['public']['Tables']['chats']['Update'];
-
-export type Message = Database['public']['Tables']['messages']['Row'];
-export type MessageInsert = Database['public']['Tables']['messages']['Insert'];
-
-// ============================================
-// Helper Functions
-// ============================================
-
-/**
- * Safely execute a Supabase query with error handling
- */
-export async function safeQuery<T>(
-  queryFn: () => Promise<{ data: T | null; error: Error | null }>
-): Promise<{ data: T | null; error: string | null }> {
-  try {
-    const { data, error } = await queryFn();
-    if (error) {
-      console.error('Supabase query error:', error);
-      return { data: null, error: error.message };
-    }
-    return { data, error: null };
-  } catch (err) {
-    const errorMessage = err instanceof Error ? err.message : 'Unknown error';
-    console.error('Supabase query exception:', err);
-    return { data: null, error: errorMessage };
-  }
 }
 
 /**

@@ -63,54 +63,6 @@ export async function searchWeb(
 }
 
 /**
- * Search specifically for OSRS guides and strategies
- */
-export async function searchOSRSGuide(topic: string): Promise<TavilySearchResult[]> {
-  const result = await searchWeb(`${topic} guide strategy`, {
-    searchDepth: 'advanced',
-    maxResults: 5,
-    includeAnswer: true,
-    includeDomains: [
-      'reddit.com/r/2007scape',
-      'reddit.com/r/ironscape',
-      'oldschool.runescape.wiki',
-    ],
-  });
-
-  return result?.results || [];
-}
-
-/**
- * Search for gear setups and recommendations
- */
-export async function searchGearSetup(
-  activity: string,
-  budget?: string
-): Promise<TavilySearchResult[]> {
-  const budgetQuery = budget ? ` ${budget} budget` : '';
-  const result = await searchWeb(`${activity} gear setup${budgetQuery}`, {
-    searchDepth: 'advanced',
-    maxResults: 5,
-    includeAnswer: true,
-  });
-
-  return result?.results || [];
-}
-
-/**
- * Search Reddit specifically for OSRS discussions
- */
-export async function searchReddit(query: string): Promise<TavilySearchResult[]> {
-  const result = await searchWeb(query, {
-    searchDepth: 'basic',
-    maxResults: 5,
-    includeDomains: ['reddit.com'],
-  });
-
-  return result?.results || [];
-}
-
-/**
  * Format Tavily results for the AI context
  */
 export function formatSearchResults(results: TavilySearchResult[]): string {

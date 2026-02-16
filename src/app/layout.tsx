@@ -20,9 +20,10 @@ const pressStart = Press_Start_2P({
 });
 
 export const metadata: Metadata = {
-  title: "OSRS Helper - AI-Powered RuneScape Assistant",
+  title: "OSRS Helper — AI-Powered RuneScape Assistant",
   description: "Get personalized OSRS advice based on your stats, gear recommendations, boss strategies, and more with AI-powered assistance.",
   keywords: ["OSRS", "Old School RuneScape", "RuneScape", "AI", "Assistant", "Guide", "Boss", "Gear"],
+  icons: { icon: "/favicon.ico" },
 };
 
 export default function RootLayout({
@@ -34,7 +35,7 @@ export default function RootLayout({
     <html lang="en" className="dark">
       <body
         className={`${geistSans.variable} ${geistMono.variable} ${pressStart.variable} antialiased`}
-        style={{ backgroundColor: 'var(--osrs-bg)' }}
+        style={{ backgroundColor: 'var(--osrs-bg)', minHeight: '100vh' }}
       >
         {children}
       </body>

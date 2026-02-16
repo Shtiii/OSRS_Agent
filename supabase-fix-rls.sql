@@ -19,34 +19,10 @@ DROP POLICY IF EXISTS "Users can insert messages in own chats" ON messages;
 DROP POLICY IF EXISTS "Users can delete messages in own chats" ON messages;
 
 -- ============================================
--- NEW POLICIES: Allow anonymous access via anonymous_id
+-- NEW POLICIES: Allow anonymous access scoped by anonymous_id
 -- ============================================
 
 -- PROFILES: Allow access by user_id OR anonymous_id
-CREATE POLICY "Allow profile access" 
-  ON profiles FOR ALL 
-  USING (true)
-  WITH CHECK (true);
-
--- CHATS: Allow access by user_id OR anonymous_id
-CREATE POLICY "Allow chat access" 
-  ON chats FOR ALL 
-  USING (true)
-  WITH CHECK (true);
-
--- MESSAGES: Allow access to messages (parent chat controls access)
-CREATE POLICY "Allow message access" 
-  ON messages FOR ALL 
-  USING (true)
-  WITH CHECK (true);
-
--- ============================================
--- Alternative: If you want more restrictive access
--- Uncomment these and comment out the above policies
--- ============================================
-
-/*
--- PROFILES: Restrictive anonymous access
 CREATE POLICY "Profile anonymous access" 
   ON profiles FOR ALL 
   USING (
@@ -58,7 +34,7 @@ CREATE POLICY "Profile anonymous access"
     OR user_id = auth.uid()
   );
 
--- CHATS: Restrictive anonymous access  
+-- CHATS: Allow access by user_id OR anonymous_id
 CREATE POLICY "Chat anonymous access"
   ON chats FOR ALL
   USING (
@@ -87,4 +63,12 @@ CREATE POLICY "Message access via chat"
       AND (chats.anonymous_id IS NOT NULL OR chats.user_id = auth.uid())
     )
   );
-*/
+
+-- DOCUMENTS: Allow read access for RAG retrieval, restrict writes to service role
+CREATE POLICY "Documents read access"
+  ON documents FOR SELECT
+  USING (true);
+
+CREATE POLICY "Documents insert via service role"
+  ON documents FOR INSERT
+  WITH CHECK (auth.role() = 'service_role');

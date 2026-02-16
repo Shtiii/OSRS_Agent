@@ -1,19 +1,28 @@
 @import "tailwindcss";
 
 :root {
-  /* OSRS Theme Colors */
-  --osrs-bg: #000000;
-  --osrs-chat: #0e0d0d;
-  --osrs-panel: #3a4433;
-  --osrs-panel-dark: #161A23;
-  --osrs-border: #161A23;
-  --osrs-border-light: #161A23;
-  --osrs-yellow: #EDDA97;
-  --osrs-orange: #e7e7e9;
-  --osrs-red: #800000;
-  --osrs-cyan: #00ffff;
-  --osrs-green: #272717;
-  --osrs-white: #ffffff;
+  /* OSRS Theme Colors - Authentic palette */
+  --osrs-bg: #0b0c10;
+  --osrs-bg-subtle: #111318;
+  --osrs-chat: #0d0e12;
+  --osrs-panel: #1a1d24;
+  --osrs-panel-dark: #12141a;
+  --osrs-panel-accent: #1e2128;
+  --osrs-border: #2a2d36;
+  --osrs-border-light: #3a3e4a;
+  --osrs-yellow: #ffcf40;
+  --osrs-yellow-light: #ffe066;
+  --osrs-orange: #ff981f;
+  --osrs-orange-light: #ffb347;
+  --osrs-red: #cc2222;
+  --osrs-red-dark: #8b0000;
+  --osrs-cyan: #00e5ff;
+  --osrs-green: #00c04b;
+  --osrs-green-dark: #2d5a27;
+  --osrs-white: #eaeaea;
+  --osrs-purple: #b388ff;
+  --osrs-gold: #ffd700;
+  --osrs-glow: rgba(255, 207, 64, 0.15);
   
   /* Background and foreground */
   --background: var(--osrs-bg);
@@ -59,87 +68,118 @@ body {
   text-shadow: 2px 2px 0 #000;
 }
 
-/* OSRS Button Style */
+/* ===== OSRS Button Style ===== */
 .osrs-button {
-  background: linear-gradient(180deg, #000000 0%, #5b4a3e 50%, #4a3d32 100%);
-  border: 2px solid var(--osrs-border);
-  border-top-color: var(--osrs-border-light);
-  border-left-color: var(--osrs-border-light);
+  background: linear-gradient(180deg, #2a2d36 0%, #1e2128 50%, #1a1d24 100%);
+  border: 1px solid var(--osrs-border-light);
   color: var(--osrs-orange);
   text-shadow: 1px 1px 0 #000;
-  font-weight: bold;
+  font-weight: 600;
   padding: 0.5rem 1rem;
   cursor: pointer;
-  transition: all 0.1s ease;
+  transition: all 0.2s ease;
+  border-radius: 6px;
+  position: relative;
+  overflow: hidden;
+}
+
+.osrs-button::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, rgba(255, 152, 31, 0.08) 0%, transparent 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
 }
 
 .osrs-button:hover {
-  background: linear-gradient(180deg, #46413d 0%, #6b5a4e 50%, #5a4d42 100%);
+  background: linear-gradient(180deg, #33363f 0%, #282b34 50%, #222530 100%);
+  border-color: var(--osrs-orange);
+  box-shadow: 0 0 12px rgba(255, 152, 31, 0.15), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transform: translateY(-1px);
+}
+
+.osrs-button:hover::before {
+  opacity: 1;
 }
 
 .osrs-button:active {
-  background: linear-gradient(180deg, #44413f 0%, #101013 50%, #7a6a5a 100%);
-  border-top-color: var(--osrs-border);
-  border-left-color: var(--osrs-border);
-  border-bottom-color: var(--osrs-border-light);
-  border-right-color: var(--osrs-border-light);
+  transform: translateY(0);
+  background: linear-gradient(180deg, #1a1d24 0%, #12141a 50%, #1e2128 100%);
+  box-shadow: inset 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 .osrs-button:disabled {
-  opacity: 0.5;
+  opacity: 0.4;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
-/* OSRS Panel Style */
+/* Primary button variant */
+.osrs-button-primary {
+  background: linear-gradient(180deg, #d4831a 0%, #b06e14 50%, #8d5810 100%);
+  border-color: #e5982e;
+  color: #fff;
+}
+
+.osrs-button-primary:hover {
+  background: linear-gradient(180deg, #e5982e 0%, #c47f1a 50%, #a06812 100%);
+  border-color: var(--osrs-yellow);
+  box-shadow: 0 0 16px rgba(255, 152, 31, 0.3);
+}
+
+/* ===== OSRS Panel Style ===== */
 .osrs-panel {
-  background: linear-gradient(180deg, #000000 0%, #16171b 20%, #16171b 100%);
-  border: 2px solid var(--osrs-border);
-  border-top-color: var(--osrs-border-light);
-  border-left-color: var(--osrs-border-light);
+  background: linear-gradient(180deg, var(--osrs-panel) 0%, var(--osrs-panel-dark) 100%);
+  border-right: 1px solid var(--osrs-border);
 }
 
-/* OSRS Input Style */
+/* ===== OSRS Input Style ===== */
 .osrs-input {
-  background: #1A1710;
-  border: 2px solid var(--osrs-border);
-  border-top-color: #1A1710;
-  border-left-color: #1A1710;
-  color: var(--osrs-yellow);
-  padding: 0.5rem;
+  background: var(--osrs-panel-dark);
+  border: 1px solid var(--osrs-border);
+  color: var(--osrs-white);
+  padding: 0.625rem 0.875rem;
+  border-radius: 6px;
+  transition: all 0.2s ease;
+  font-size: 0.9rem;
 }
 
 .osrs-input:focus {
   outline: none;
   border-color: var(--osrs-orange);
+  box-shadow: 0 0 0 3px rgba(255, 152, 31, 0.12);
+  background: #15171d;
 }
 
 .osrs-input::placeholder {
-  color: #666;
+  color: #555;
 }
 
-/* Custom scrollbar - OSRS themed */
+/* ===== Custom scrollbar - OSRS themed ===== */
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
 }
 
 ::-webkit-scrollbar-track {
-  background: #2a2a2a;
-  border: 1px solid var(--osrs-border);
+  background: var(--osrs-panel-dark);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb {
-  background: linear-gradient(180deg, #6b5a4e 0%, #5b4a3e 50%, #4a3d32 100%);
-  border: 1px solid var(--osrs-border-light);
+  background: var(--osrs-border-light);
+  border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: linear-gradient(180deg, #7b6a5e 0%, #6b5a4e 50%, #5a4d42 100%);
+  background: var(--osrs-orange);
 }
 
-/* Selection color - OSRS orange */
+/* Selection color */
 ::selection {
-  background: rgba(70, 128, 62, 0.4);
+  background: rgba(255, 152, 31, 0.3);
   color: var(--osrs-yellow);
 }
 
@@ -150,15 +190,205 @@ body {
   text-shadow: 1px 1px 0 #000;
 }
 
-/* OSRS Chat message styles */
-.osrs-chat-user {
-  color: var(--osrs-cyan);
+/* ===== Message animations ===== */
+@keyframes messageSlideIn {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.osrs-chat-ai {
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes gentlePulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
+}
+
+@keyframes shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+
+@keyframes glowPulse {
+  0%, 100% { box-shadow: 0 0 8px rgba(255, 207, 64, 0.1); }
+  50% { box-shadow: 0 0 16px rgba(255, 207, 64, 0.25); }
+}
+
+.animate-message-in {
+  animation: messageSlideIn 0.3s ease-out;
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.5s ease-out;
+}
+
+.animate-gentle-pulse {
+  animation: gentlePulse 2s ease-in-out infinite;
+}
+
+.animate-glow-pulse {
+  animation: glowPulse 3s ease-in-out infinite;
+}
+
+/* ===== OSRS-styled cards ===== */
+.osrs-card {
+  background: var(--osrs-panel-dark);
+  border: 1px solid var(--osrs-border);
+  border-radius: 8px;
+  transition: all 0.2s ease;
+}
+
+.osrs-card:hover {
+  border-color: var(--osrs-border-light);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+
+/* ===== Stat bar ===== */
+.stat-bar {
+  height: 4px;
+  background: var(--osrs-border);
+  border-radius: 2px;
+  overflow: hidden;
+}
+
+.stat-bar-fill {
+  height: 100%;
+  background: linear-gradient(90deg, var(--osrs-green) 0%, var(--osrs-yellow) 100%);
+  border-radius: 2px;
+  transition: width 0.5s ease;
+}
+
+/* ===== Tooltip ===== */
+.osrs-tooltip {
+  position: relative;
+}
+
+.osrs-tooltip::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 4px 10px;
+  background: #1a1d24;
+  border: 1px solid var(--osrs-border-light);
+  border-radius: 4px;
   color: var(--osrs-yellow);
+  font-size: 0.75rem;
+  white-space: nowrap;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  z-index: 50;
 }
 
-.osrs-chat-system {
+.osrs-tooltip:hover::after {
+  opacity: 1;
+}
+
+/* ===== Badge ===== */
+.osrs-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-size: 0.75rem;
+  font-weight: 600;
+  border: 1px solid transparent;
+}
+
+.osrs-badge-iron {
+  background: rgba(156, 163, 175, 0.15);
+  color: #9ca3af;
+  border-color: rgba(156, 163, 175, 0.3);
+}
+
+.osrs-badge-hcim {
+  background: rgba(239, 68, 68, 0.15);
+  color: #ef4444;
+  border-color: rgba(239, 68, 68, 0.3);
+}
+
+.osrs-badge-uim {
+  background: rgba(168, 85, 247, 0.15);
+  color: #a855f7;
+  border-color: rgba(168, 85, 247, 0.3);
+}
+
+.osrs-badge-regular {
+  background: rgba(34, 197, 94, 0.15);
+  color: #22c55e;
+  border-color: rgba(34, 197, 94, 0.3);
+}
+
+/* ===== Divider with label ===== */
+.osrs-divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  color: #555;
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+}
+
+.osrs-divider::before,
+.osrs-divider::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--osrs-border);
+}
+
+/* ===== Sidebar section ===== */
+.sidebar-section {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--osrs-border);
+}
+
+/* ===== Chat message bubbles ===== */
+.msg-user {
+  background: linear-gradient(135deg, rgba(0, 229, 255, 0.08) 0%, rgba(0, 229, 255, 0.03) 100%);
+  border: 1px solid rgba(0, 229, 255, 0.12);
+  border-radius: 12px 12px 4px 12px;
+}
+
+.msg-assistant {
+  background: linear-gradient(135deg, rgba(255, 207, 64, 0.06) 0%, rgba(255, 152, 31, 0.03) 100%);
+  border: 1px solid rgba(255, 207, 64, 0.1);
+  border-radius: 12px 12px 12px 4px;
+}
+
+/* ===== Suggestion chips ===== */
+.suggestion-chip {
+  background: var(--osrs-panel);
+  border: 1px solid var(--osrs-border);
+  border-radius: 12px;
+  padding: 10px 16px;
+  color: var(--osrs-orange-light);
+  font-size: 0.875rem;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+}
+
+.suggestion-chip:hover {
+  background: var(--osrs-panel-accent);
+  border-color: var(--osrs-orange);
   color: var(--osrs-orange);
+  box-shadow: 0 0 12px rgba(255, 152, 31, 0.1);
+  transform: translateY(-1px);
+}
+
+.suggestion-chip:active {
+  transform: translateY(0);
 }
