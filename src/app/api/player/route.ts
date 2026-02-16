@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { getPlayerStats, updatePlayerStats, getPlayerGains } from '@/lib/osrs';
+import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 
 // RSN: 1-12 characters, alphanumeric + spaces + hyphens + underscores
 const RSN_REGEX = /^[a-zA-Z0-9 _-]{1,12}$/;
@@ -11,7 +12,27 @@ function validateUsername(username: string | null): string | null {
   return trimmed;
 }
 
+function rateLimitResponse(req: Request, prefix: string) {
+  const clientId = getClientIdentifier(req);
+  const check = checkRateLimit(`${prefix}:${clientId}`, {
+    limit: 15,          // 15 lookups
+    windowSeconds: 60,  // per minute
+  });
+  if (!check.allowed) {
+    return NextResponse.json(
+      { error: 'Rate limit exceeded. Please wait before making more requests.' },
+      {
+        status: 429,
+        headers: { 'Retry-After': Math.ceil((check.resetAt - Date.now()) / 1000).toString() },
+      }
+    );
+  }
+  return null;
+}
+
 export async function GET(req: Request) {
+  const limited = rateLimitResponse(req, 'player-get');
+  if (limited) return limited;
   const { searchParams } = new URL(req.url);
   const username = validateUsername(searchParams.get('username'));
 
@@ -46,6 +67,9 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const limited = rateLimitResponse(req, 'player-post');
+  if (limited) return limited;
+
   let body: { username?: string };
   try {
     body = await req.json();

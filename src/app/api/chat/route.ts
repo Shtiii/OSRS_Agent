@@ -6,6 +6,7 @@ import { searchWiki, getWikiPage, getWikiPageFull, getItemPrice, getPlayerStats,
 import { searchWeb } from '@/lib/tavily';
 import { retrieveContext, formatContextForPrompt, isRAGConfigured, addDocument } from '@/lib/rag';
 import { getSupabaseClient } from '@/lib/supabase';
+import { checkRateLimit, getClientIdentifier } from '@/lib/rate-limit';
 import type { UserContext, CollectionLogItem } from '@/lib/types';
 
 // Allow streaming responses up to 60 seconds
@@ -23,7 +24,6 @@ function debugLog(...args: unknown[]) {
 const openrouter = createOpenAI({
   baseURL: 'https://openrouter.ai/api/v1',
   apiKey: process.env.OPENROUTER_API_KEY ?? '',
-  compatibility: 'compatible',
   headers: {
     'HTTP-Referer': 'https://osrs-agent.local',
     'X-Title': 'OSRS Helper Agent',
@@ -399,7 +399,90 @@ ${memorySection}
 // MAIN API HANDLER
 // ============================================
 
+// ============================================
+// TOPIC GUARDRAIL
+// ============================================
+
+/** Quick check to reject blatantly off-topic or prompt-injection attempts. */
+function isOffTopic(text: string): boolean {
+  const lower = text.toLowerCase();
+
+  // Prompt injection patterns
+  const injectionPatterns = [
+    /ignore (all |your |previous |above )?instructions/i,
+    /disregard (all |your |previous |above )?instructions/i,
+    /forget (all |your |previous |above )?instructions/i,
+    /you are now/i,
+    /new persona/i,
+    /act as (?!a player|an ironman|a hardcore)/i,
+    /pretend you(?:'re| are) (?!a player|an ironman)/i,
+    /system prompt/i,
+    /reveal your (instructions|prompt|system)/i,
+    /what are your instructions/i,
+  ];
+
+  for (const pattern of injectionPatterns) {
+    if (pattern.test(text)) return true;
+  }
+
+  // Clearly off-topic categories (only block if there's zero OSRS context)
+  const osrsKeywords = [
+    'osrs', 'runescape', 'rs', 'quest', 'boss', 'skill', 'level', 'xp',
+    'gear', 'item', 'slayer', 'prayer', 'combat', 'gp', 'gold', 'wiki',
+    'ironman', 'hcim', 'uim', 'ge ', 'grand exchange', 'drop', 'pet',
+    'clue', 'diary', 'minigame', 'raid', 'cox', 'tob', 'toa',
+    'wilderness', 'pvp', 'pvm', 'pk', 'barrows', 'godwars', 'zulrah',
+    'vorkath', 'gauntlet', 'inferno', 'fire cape', 'dragon', 'rune',
+    'abyssal', 'whip', 'blowpipe', 'trident', 'sailing', 'fishing',
+    'mining', 'woodcutting', 'cooking', 'crafting', 'herblore', 'agility',
+    'runecrafting', 'hunter', 'thieving', 'farming', 'construction',
+    'fletching', 'firemaking', 'smithing', 'account', 'stats', 'total level',
+    'dps', 'max hit', 'spec', 'special attack', 'potion', 'food',
+  ];
+
+  const hasOsrsContext = osrsKeywords.some((kw) => lower.includes(kw));
+
+  // Only hard-block if clearly off-topic AND no OSRS context
+  if (!hasOsrsContext) {
+    const offTopicPatterns = [
+      /write (me )?(a |an )?(essay|story|poem|code|script|email)/i,
+      /help me (hack|cheat|steal|scam)/i,
+      /how to (hack|ddos|dox|swat)/i,
+      /generate (code|python|javascript|html|sql)/i,
+      /translate .+ (to|into) (french|spanish|german|chinese|japanese)/i,
+    ];
+    for (const pattern of offTopicPatterns) {
+      if (pattern.test(text)) return true;
+    }
+  }
+
+  return false;
+}
+
 export async function POST(req: Request) {
+  // ── Rate Limiting ──
+  const clientId = getClientIdentifier(req);
+  const rateCheck = checkRateLimit(`chat:${clientId}`, {
+    limit: 30,          // 30 messages
+    windowSeconds: 60,  // per minute
+  });
+
+  if (!rateCheck.allowed) {
+    return new Response(
+      JSON.stringify({
+        error: 'Rate limit exceeded. Please wait before sending more messages.',
+        retryAfter: Math.ceil((rateCheck.resetAt - Date.now()) / 1000),
+      }),
+      {
+        status: 429,
+        headers: {
+          'Content-Type': 'application/json',
+          'Retry-After': Math.ceil((rateCheck.resetAt - Date.now()) / 1000).toString(),
+        },
+      }
+    );
+  }
+
   try {
     const body = await req.json();
 
@@ -418,6 +501,16 @@ export async function POST(req: Request) {
       .slice()
       .reverse()
       .find((m) => m.role === 'user')?.content || '';
+
+    // ── Topic Guardrail ──
+    if (latestUserMessage && isOffTopic(latestUserMessage)) {
+      return new Response(
+        JSON.stringify({
+          error: 'I can only help with Old School RuneScape topics. Please ask me about OSRS!',
+        }),
+        { status: 400, headers: { 'Content-Type': 'application/json' } }
+      );
+    }
 
     // Optional: RAG context retrieval
     let ragContext = '';
