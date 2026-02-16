@@ -77,6 +77,37 @@ interface CachedWikiPage {
   cachedAt: string;
 }
 
+interface CachedDocumentRow {
+  id: string;
+  content: string;
+  metadata: Record<string, string> | null;
+}
+
+const validAccountTypes = ['regular', 'ironman', 'hardcore', 'ultimate'] as const;
+
+function normalizeUserContext(
+  userContext: z.infer<typeof chatRequestSchema>['userContext']
+): UserContext | null {
+  if (!userContext) {
+    return null;
+  }
+
+  const accountType =
+    typeof userContext.accountType === 'string' &&
+    validAccountTypes.includes(userContext.accountType as (typeof validAccountTypes)[number])
+      ? (userContext.accountType as UserContext['accountType'])
+      : null;
+
+  return {
+    username: userContext.username ?? null,
+    stats: (userContext.stats ?? null) as UserContext['stats'],
+    gains: (userContext.gains ?? null) as UserContext['gains'],
+    collectionLog: (userContext.collectionLog ?? null) as UserContext['collectionLog'],
+    rareItems: (userContext.rareItems ?? []) as UserContext['rareItems'],
+    accountType,
+  };
+}
+
 const WIKI_CACHE_TTL = 180 * 24 * 60 * 60 * 1000; // 6 months
 
 async function getCachedWikiPage(title: string): Promise<CachedWikiPage | null> {
@@ -85,7 +116,7 @@ async function getCachedWikiPage(title: string): Promise<CachedWikiPage | null> 
 
   try {
     const normalizedTitle = title.toLowerCase().trim();
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('documents')
       .select('content, metadata')
       .eq('metadata->>type', 'wiki_page')
@@ -95,7 +126,7 @@ async function getCachedWikiPage(title: string): Promise<CachedWikiPage | null> 
 
     if (error || !data) return null;
 
-    const metadata = data.metadata as Record<string, string> | null;
+    const metadata = (data as CachedDocumentRow).metadata;
 
     // Check if cache has expired
     const cachedAt = metadata?.cachedAt;
@@ -109,7 +140,7 @@ async function getCachedWikiPage(title: string): Promise<CachedWikiPage | null> 
 
     return {
       title: metadata?.title || title,
-      content: data.content,
+      content: (data as CachedDocumentRow).content,
       url: metadata?.url || '',
       imageUrl: metadata?.imageUrl || null,
       cachedAt: cachedAt || '',
@@ -143,7 +174,7 @@ async function cacheWikiPage(
     }
 
     // Check if this page already exists in the cache
-    const { data: existing } = await supabase
+    const { data: existing } = await (supabase as any)
       .from('documents')
       .select('id')
       .eq('metadata->>type', 'wiki_page')
@@ -156,10 +187,10 @@ async function cacheWikiPage(
       const { createEmbedding } = await import('@/lib/rag');
       const embedding = await createEmbedding(content);
       if (embedding) {
-        await supabase
+        await (supabase as any)
           .from('documents')
           .update({ content, metadata, embedding })
-          .eq('id', existing.id);
+          .eq('id', (existing as Pick<CachedDocumentRow, 'id'>).id);
         debugLog(`Updated cached Wiki page: ${title}`);
       }
     } else {
@@ -529,7 +560,7 @@ export async function POST(req: Request) {
       }
     }
 
-    const baseSystemPrompt = buildSystemPrompt(userContext, profile);
+    const baseSystemPrompt = buildSystemPrompt(normalizeUserContext(userContext), profile);
     const systemPrompt = ragContext
       ? `${baseSystemPrompt}\n\n### CACHED KNOWLEDGE (from previous lookups):\n${ragContext}`
       : baseSystemPrompt;

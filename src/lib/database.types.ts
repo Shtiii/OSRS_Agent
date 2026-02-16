@@ -137,6 +137,32 @@ export interface Database {
           created_at?: string;
         };
       };
+      documents: {
+        Row: {
+          id: string;
+          content: string;
+          metadata: Json | null;
+          embedding: number[] | null;
+          created_at: string;
+          updated_at: string;
+        };
+        Insert: {
+          id?: string;
+          content: string;
+          metadata?: Json | null;
+          embedding?: number[] | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+        Update: {
+          id?: string;
+          content?: string;
+          metadata?: Json | null;
+          embedding?: number[] | null;
+          created_at?: string;
+          updated_at?: string;
+        };
+      };
     };
     Views: {
       [_ in never]: never;
@@ -145,6 +171,30 @@ export interface Database {
       generate_chat_title: {
         Args: { first_message: string };
         Returns: string;
+      };
+      match_documents: {
+        Args: {
+          query_embedding: number[];
+          match_threshold?: number;
+          match_count?: number;
+        };
+        Returns: {
+          id: string;
+          content: string;
+          metadata: Json;
+          similarity: number;
+        }[];
+      };
+      search_documents_by_category: {
+        Args: {
+          category_filter: string;
+          search_limit?: number;
+        };
+        Returns: {
+          id: string;
+          content: string;
+          metadata: Json;
+        }[];
       };
     };
     Enums: {
@@ -178,11 +228,14 @@ export type UpdateTables<T extends keyof Database['public']['Tables']> =
 export type ProfileRow = Tables<'profiles'>;
 export type ChatRow = Tables<'chats'>;
 export type MessageRow = Tables<'messages'>;
+export type DocumentRow = Tables<'documents'>;
 
 export type ProfileInsert = InsertTables<'profiles'>;
 export type ChatInsert = InsertTables<'chats'>;
 export type MessageInsert = InsertTables<'messages'>;
+export type DocumentInsert = InsertTables<'documents'>;
 
 export type ProfileUpdate = UpdateTables<'profiles'>;
 export type ChatUpdate = UpdateTables<'chats'>;
 export type MessageUpdate = UpdateTables<'messages'>;
+export type DocumentUpdate = UpdateTables<'documents'>;

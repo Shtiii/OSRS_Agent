@@ -110,7 +110,7 @@ export async function retrieveContext(
 
   try {
     // Call the match_documents function
-    const { data, error } = await supabase.rpc('match_documents', {
+    const { data, error } = await (supabase as any).rpc('match_documents', {
       query_embedding: embedding,
       match_threshold: matchThreshold,
       match_count: matchCount,
@@ -183,7 +183,7 @@ export async function addDocument(
   }
 
   try {
-    const { data, error } = await supabase
+    const { data, error } = await (supabase as any)
       .from('documents')
       .insert({
         content,
@@ -198,7 +198,7 @@ export async function addDocument(
       return null;
     }
 
-    return data?.id || null;
+    return (data as { id?: string } | null)?.id || null;
   } catch (error) {
     console.error('Error in addDocument:', error);
     return null;
