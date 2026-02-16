@@ -466,7 +466,7 @@ export default function Chat({
                   }
                 }}
                 placeholder="Ask about bosses, quests, money making... (Shift+Enter for new line)"
-                className="osrs-input w-full text-sm resize-none overflow-y-auto"
+                className="osrs-input block w-full text-sm resize-none overflow-y-auto"
                 style={{ maxHeight: '200px' }}
                 rows={1}
                 disabled={isLoading}

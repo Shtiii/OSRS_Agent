@@ -7,8 +7,13 @@ import { useChats, useProfile, ChatHistoryItem } from '@/hooks/useSupabase';
 import type { WOMPlayerDetails, WOMGains, CollectionLogData, CollectionLogItem, UserContext } from '@/lib/types';
 
 export default function Dashboard() {
-  // Player context state
-  const [username, setUsername] = useState('');
+  // Player context state – restore from localStorage for instant recall
+  const [username, setUsername] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return localStorage.getItem('osrs_username') || '';
+    }
+    return '';
+  });
   const [stats, setStats] = useState<WOMPlayerDetails | null>(null);
   const [gains, setGains] = useState<WOMGains | null>(null);
   const [collectionLog, setCollectionLog] = useState<CollectionLogData | null>(null);
@@ -149,6 +154,13 @@ export default function Dashboard() {
     }
   }, [deleteChat, currentChatId]);
 
+  // Persist username to localStorage whenever it changes
+  useEffect(() => {
+    if (username) {
+      localStorage.setItem('osrs_username', username);
+    }
+  }, [username]);
+
   // Load stats when username changes
   useEffect(() => {
     if (username) {
@@ -156,7 +168,7 @@ export default function Dashboard() {
     }
   }, [username, loadStats]);
 
-  // Restore username from profile if available
+  // Restore username from profile if available (fallback if localStorage was empty)
   useEffect(() => {
     if (profile?.osrs_username && !username) {
       setUsername(profile.osrs_username);

@@ -680,6 +680,19 @@ export async function POST(req: Request) {
               const topResult = results[0];
               const pageContent = await getWikiPage(topResult.title);
 
+              // Cache the top result for future RAG retrieval
+              if (pageContent) {
+                const fullContent = await getWikiPageFull(topResult.title);
+                if (fullContent) {
+                  cacheWikiPage(
+                    topResult.title,
+                    fullContent,
+                    pageContent.fullurl,
+                    pageContent.imageUrl
+                  ).catch((err) => debugLog('[Cache] searchWiki background cache failed:', err));
+                }
+              }
+
               return {
                 success: true as const,
               searchResults: results.slice(0, 5).map((r) => ({
@@ -858,6 +871,13 @@ export async function POST(req: Request) {
               };
             }
 
+            const url = pageInfo?.fullurl || `https://oldschool.runescape.wiki/w/${encodeURIComponent(contentName)}`;
+            const imageUrl = pageInfo?.imageUrl || null;
+
+            // Cache for future RAG retrieval
+            cacheWikiPage(contentName, pageContent, url, imageUrl)
+              .catch((err) => debugLog('[Cache] checkRequirements background cache failed:', err));
+
             // Extract requirement-related sections
             const reqSection = extractRequirementSection(pageContent);
 
@@ -889,8 +909,8 @@ export async function POST(req: Request) {
               success: true as const,
               contentName,
               contentType,
-              url: pageInfo?.fullurl || `https://oldschool.runescape.wiki/w/${encodeURIComponent(contentName)}`,
-              imageUrl: pageInfo?.imageUrl || null,
+              url,
+              imageUrl,
               requirementsText: reqSection.slice(0, 3000),
               statsComparison: statsComparison.length > 0 ? statsComparison : null,
               allRequirementsMet: statsComparison.length > 0 ? allMet : null,
