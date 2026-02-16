@@ -152,7 +152,21 @@ export default function Chat({
       });
 
       if (!response.ok) {
-        throw new Error('Failed to get response');
+        // Parse error message from API (rate limit, topic block, etc.)
+        let errorMessage = 'Failed to get response';
+        try {
+          const errorData = await response.json();
+          if (errorData.error) {
+            errorMessage = errorData.error;
+          }
+          if (response.status === 429 && errorData.retryAfter) {
+            errorMessage += ` (retry in ${errorData.retryAfter}s)`;
+          }
+        } catch {
+          // If JSON parsing fails, use status text
+          errorMessage = `Server error: ${response.status} ${response.statusText}`;
+        }
+        throw new Error(errorMessage);
       }
 
       const reader = response.body?.getReader();

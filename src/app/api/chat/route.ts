@@ -2,7 +2,7 @@
 import type { ModelMessage } from 'ai';
 import { createOpenAI } from '@ai-sdk/openai';
 import { z } from 'zod';
-import { searchWiki, getWikiPage, getWikiPageFull, getItemPrice, getPlayerStats, formatPriceSummary, formatStatsSummary, formatGainsSummary, getPlayerGains } from '@/lib/osrs';
+import { searchWiki, getWikiPage, getWikiPageFull, getItemPrice, getMultipleItemPrices, getPlayerStats, formatPriceSummary, formatStatsSummary, formatGainsSummary, getPlayerGains, formatPrice } from '@/lib/osrs';
 import { searchWeb } from '@/lib/tavily';
 import { retrieveContext, formatContextForPrompt, isRAGConfigured, addDocument } from '@/lib/rag';
 import { getSupabaseClient } from '@/lib/supabase';
@@ -368,20 +368,24 @@ ${formatRareItemsForPrompt(userContext.rareItems)}
 You have access to the **ENTIRE OSRS Wiki** and **real-time GE prices** via tools.
 
 ### AVAILABLE TOOLS:
-- **searchWiki** - Search for Wiki pages when unsure of the exact page name. Returns a summary of the top result. Use \`getWikiPage\` afterwards if you need more detail or a different page from the results.
+- **searchWiki** - Search for Wiki pages when unsure of the exact page name. Returns a detailed summary of the top result (often enough to answer without a follow-up).
 - **getWikiPage** - Read the full content of a specific Wiki page. Use for detailed drop tables, quest steps, boss mechanics, requirements, etc.
-- **getItemPrice** - Get live Grand Exchange prices (real-time data from the Wiki Prices API).
+- **getItemPrice** - Get live Grand Exchange price for a single item.
+- **comparePrices** - Compare prices for multiple items at once (e.g., gear comparisons). Much faster than calling getItemPrice repeatedly — use this when comparing 2+ items.
+- **checkRequirements** - Check if the user meets requirements for a quest, boss, diary, or activity. Fetches requirements from the Wiki and compares against the user's stats. Use when users ask "can I do X?" or "what do I need for X?".
 - **searchWeb** - Search the web for community content (Reddit, YouTube). Use for meta strategies, current opinions, or recent game updates.
 - **lookupPlayer** - Look up any OSRS player's stats and recent gains from Wise Old Man. Use when the user asks about another player.
 
 ### WHEN TO USE TOOLS:
-- Drop rates, boss mechanics, quest requirements â†’ searchWiki + getWikiPage
-- Item prices, costs, money-making comparisons â†’ getItemPrice
-- Diary requirements, minigame rewards, spell unlocks â†’ getWikiPage
-- Skilling XP rates, methods, efficiency â†’ searchWiki + getWikiPage
-- Slayer tasks, masters, weights â†’ getWikiPage
-- Community meta, opinions, recent updates â†’ searchWeb
-- Another player's stats â†’ lookupPlayer
+- Drop rates, boss mechanics, quest requirements → searchWiki + getWikiPage
+- "Can I do X with my stats?" → **checkRequirements** (preferred) or getWikiPage
+- Single item price → getItemPrice
+- Comparing gear/item costs → **comparePrices** (preferred, handles multiple at once)
+- Diary requirements, minigame rewards, spell unlocks → getWikiPage
+- Skilling XP rates, methods, efficiency → searchWiki + getWikiPage
+- Slayer tasks, masters, weights → getWikiPage
+- Community meta, opinions, recent updates → searchWeb
+- Another player's stats → lookupPlayer
 
 ### WHEN NOT TO USE TOOLS:
 - Simple greetings ("Hi!", "Thanks!")
@@ -424,6 +428,65 @@ ${memorySection}
 2. **TRUST TOOLS OVER TRAINING**: Your training data has a cutoff date. OSRS is a live game with frequent updates. If the Wiki says something exists, it exists. Do not contradict tool results.
 3. **RESPECT GAME MODE**: Always consider the user's account type. Never suggest GE purchases to ironmen.
 4. **VERIFY BEFORE RECOMMENDING**: If suggesting a boss, quest, or activity, check that the user's stats are sufficient.`;
+}
+
+// ============================================
+// REQUIREMENT PARSING HELPERS
+// ============================================
+
+/** Extract the requirements section from cleaned wiki text */
+function extractRequirementSection(wikiText: string): string {
+  // Look for requirements/quest requirements sections
+  const patterns = [
+    /## Requirements[\s\S]*?(?=\n## |$)/i,
+    /## Quest requirements[\s\S]*?(?=\n## |$)/i,
+    /## Skill requirements[\s\S]*?(?=\n## |$)/i,
+    /### Requirements[\s\S]*?(?=\n### |\n## |$)/i,
+    /## Prerequisites[\s\S]*?(?=\n## |$)/i,
+  ];
+
+  for (const pattern of patterns) {
+    const match = wikiText.match(pattern);
+    if (match) return match[0];
+  }
+
+  // Fallback: grab first 2000 chars which usually contain requirements
+  return wikiText.slice(0, 2000);
+}
+
+/** Parse skill level requirements from wiki text like "70 Prayer" or "Level 80 Mining" */
+function parseSkillRequirements(text: string): { skill: string; level: number }[] {
+  const results: { skill: string; level: number }[] = [];
+  const seen = new Set<string>();
+
+  const skillNames = [
+    'Attack', 'Strength', 'Defence', 'Hitpoints', 'Ranged', 'Prayer', 'Magic',
+    'Runecrafting', 'Construction', 'Agility', 'Herblore', 'Thieving', 'Crafting',
+    'Fletching', 'Slayer', 'Hunter', 'Mining', 'Smithing', 'Fishing', 'Cooking',
+    'Firemaking', 'Woodcutting', 'Farming', 'Sailing',
+  ];
+
+  for (const skill of skillNames) {
+    // Match patterns like "70 Prayer", "Level 80 Mining", "Prayer level 70"
+    const patterns = [
+      new RegExp(`(\\d{1,2})\\s+${skill}\\b`, 'gi'),
+      new RegExp(`${skill}\\s+(?:level\\s+)?(\\d{1,2})`, 'gi'),
+      new RegExp(`(?:level\\s+)(\\d{1,2})\\s+${skill}`, 'gi'),
+    ];
+
+    for (const pattern of patterns) {
+      let match;
+      while ((match = pattern.exec(text)) !== null) {
+        const level = parseInt(match[1], 10);
+        if (level >= 1 && level <= 99 && !seen.has(skill.toLowerCase())) {
+          seen.add(skill.toLowerCase());
+          results.push({ skill, level });
+        }
+      }
+    }
+  }
+
+  return results;
 }
 
 // ============================================
@@ -567,7 +630,21 @@ export async function POST(req: Request) {
 
     const modelId = process.env.OPENROUTER_MODEL || 'deepseek/deepseek-chat';
 
-    const modelMessages: ModelMessage[] = messages.map((m) =>
+    // ── Conversation Windowing ──
+    // Keep first 2 messages (initial context) + last 20 messages to avoid
+    // blowing context window on long conversations. Profile/memory data
+    // is always in the system prompt regardless.
+    const MAX_CONTEXT_MESSAGES = 20;
+    const KEEP_FIRST = 2;
+    let windowedMessages = messages;
+    if (messages.length > MAX_CONTEXT_MESSAGES + KEEP_FIRST) {
+      const firstMessages = messages.slice(0, KEEP_FIRST);
+      const recentMessages = messages.slice(-MAX_CONTEXT_MESSAGES);
+      windowedMessages = [...firstMessages, ...recentMessages];
+      debugLog(`Windowed conversation: ${messages.length} → ${windowedMessages.length} messages`);
+    }
+
+    const modelMessages: ModelMessage[] = windowedMessages.map((m) =>
       m.role === 'user'
         ? { role: 'user' as const, content: m.content }
         : { role: 'assistant' as const, content: m.content }
@@ -577,7 +654,7 @@ export async function POST(req: Request) {
       model: openrouter.chat(modelId),
       system: systemPrompt,
       messages: modelMessages,
-      stopWhen: stepCountIs(5),
+      stopWhen: stepCountIs(7),
       tools: {
         searchWiki: tool({
           description: 'Search the OSRS Wiki for a topic. Use when unsure of exact page name. Returns search results and top page summary.',
@@ -605,7 +682,7 @@ export async function POST(req: Request) {
                 ? {
                     title: pageContent.title,
                     url: pageContent.fullurl,
-                    summary: pageContent.extract.slice(0, 800),
+                    summary: pageContent.extract.slice(0, 2500),
                     imageUrl: pageContent.imageUrl || null,
                   }
                 : null,
@@ -720,6 +797,101 @@ export async function POST(req: Request) {
             };
           },
         }),
+        comparePrices: tool({
+          description: 'Compare Grand Exchange prices for multiple items at once. Use when users ask to compare gear costs, want multiple prices, or need cost breakdowns for setups. Much more efficient than calling getItemPrice multiple times.',
+          inputSchema: z.object({
+            itemNames: z.array(z.string()).min(2).max(10).describe('Array of item names to compare (e.g., ["Abyssal whip", "Blade of saeldor", "Ghrazi rapier"])'),
+          }),
+          execute: async ({ itemNames }) => {
+            debugLog(`[Tool] comparePrices: ${itemNames.join(', ')}`);
+            const prices = await getMultipleItemPrices(itemNames);
+            const results = Object.entries(prices).map(([name, data]) => ({
+              itemName: name,
+              found: !!data,
+              highPrice: data?.highPrice ?? null,
+              lowPrice: data?.lowPrice ?? null,
+              avgPrice: data?.avgPrice ?? null,
+              volume: data?.volume ?? null,
+              formatted: data ? `${data.itemName}: ${formatPrice(data.avgPrice)} avg (Buy: ${formatPrice(data.highPrice)}, Sell: ${formatPrice(data.lowPrice)})` : `${name}: Not found`,
+            }));
+
+            const found = results.filter((r) => r.found);
+            const notFound = results.filter((r) => !r.found);
+
+            // Sort by price descending for easy comparison
+            found.sort((a, b) => (b.avgPrice ?? 0) - (a.avgPrice ?? 0));
+
+            return {
+              success: true as const,
+              items: found,
+              notFound: notFound.map((r) => r.itemName),
+              summary: found.map((r) => r.formatted).join('\n'),
+            };
+          },
+        }),
+
+        checkRequirements: tool({
+          description: 'Check if the current user meets the requirements for a quest, diary, boss, or activity. Fetches requirements from the Wiki and compares against the user\'s stats. Use when users ask "can I do X?" or "what do I need for X?".',
+          inputSchema: z.object({
+            contentName: z.string().describe('Name of the quest, diary, boss, or activity to check (e.g., "Dragon Slayer II", "Zulrah", "Lumbridge & Draynor Diary")'),
+            contentType: z.enum(['quest', 'boss', 'diary', 'activity']).describe('Type of content to check requirements for'),
+          }),
+          execute: async ({ contentName, contentType }) => {
+            debugLog(`[Tool] checkRequirements: "${contentName}" (${contentType})`);
+
+            // Fetch the Wiki page for this content
+            const pageContent = await getWikiPageFull(contentName);
+            const pageInfo = await getWikiPage(contentName);
+
+            if (!pageContent) {
+              return {
+                success: false as const,
+                message: `Could not find "${contentName}" on the Wiki. Try searchWiki to find the correct name.`,
+              };
+            }
+
+            // Extract requirement-related sections
+            const reqSection = extractRequirementSection(pageContent);
+
+            // Compare against user stats if available
+            const userStats = normalizeUserContext(userContext);
+            let statsComparison: { skill: string; required: number; current: number; met: boolean }[] = [];
+
+            if (userStats?.stats?.latestSnapshot?.data?.skills) {
+              const skills = userStats.stats.latestSnapshot.data.skills;
+              // Parse skill requirements from the text
+              const skillReqs = parseSkillRequirements(reqSection);
+
+              statsComparison = skillReqs.map((req) => {
+                const userSkill = skills[req.skill.toLowerCase()];
+                const currentLevel = userSkill?.level ?? 0;
+                return {
+                  skill: req.skill,
+                  required: req.level,
+                  current: currentLevel,
+                  met: currentLevel >= req.level,
+                };
+              });
+            }
+
+            const allMet = statsComparison.length > 0 && statsComparison.every((s) => s.met);
+            const unmetReqs = statsComparison.filter((s) => !s.met);
+
+            return {
+              success: true as const,
+              contentName,
+              contentType,
+              url: pageInfo?.fullurl || `https://oldschool.runescape.wiki/w/${encodeURIComponent(contentName)}`,
+              imageUrl: pageInfo?.imageUrl || null,
+              requirementsText: reqSection.slice(0, 3000),
+              statsComparison: statsComparison.length > 0 ? statsComparison : null,
+              allRequirementsMet: statsComparison.length > 0 ? allMet : null,
+              unmetRequirements: unmetReqs.length > 0 ? unmetReqs : null,
+              hasUserStats: !!userStats?.stats,
+            };
+          },
+        }),
+
         lookupPlayer: tool({
           description: 'Look up any OSRS player\'s stats and recent activity from Wise Old Man. Use when users ask about another player or want to compare.',
           inputSchema: z.object({
